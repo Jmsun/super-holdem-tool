@@ -1,97 +1,59 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>德州扑克买入与结算（稳定简化版）</title>
-<style>
-  :root { --bg:#0b0f14;--card:#121821;--muted:#222a35;--text:#e6edf3;--sub:#a9b6c6;--pri:#3ea6ff;--ok:#22c55e;--warn:#f59e0b;--err:#ef4444; }
-  *{box-sizing:border-box}
-  body{margin:0;background:#0b0f14;color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
-  header{position:sticky;top:0;z-index:10;background:#0f1620;backdrop-filter:blur(8px);border-bottom:1px solid #1b2430}
-  .wrap{max-width:980px;margin:0 auto;padding:12px}
-  h1{margin:0;font-size:18px;letter-spacing:.5px}
-  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .card{background:var(--card);border:1px solid #1b2430;border-radius:14px}
-  .section{margin:12px}
-  input,select,button,textarea{background:#0f141c;color:var(--text);border:1px solid #243142;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
-  button{background:linear-gradient(180deg,#1b2734,#141c27);border:1px solid #2b3b4f;cursor:pointer}
-  .btn{padding:10px 14px;border-radius:12px}
-  .btn-pri{background:linear-gradient(180deg,#1f5a8f,#14446d);border-color:#25618b}
-  .btn-ok{background:linear-gradient(180deg,#1f5730,#153d22);border-color:#1e7a3a}
-  .pill{padding:6px 10px;border-radius:999px;border:1px solid #2a3647;background:#0f141c;color:var(--sub)}
-  .grid{display:grid;gap:10px}
-  .grid-3{grid-template-columns:1.2fr .8fr .8fr}
-  .table{width:100%;border-collapse:separate;border-spacing:0}
-  .table th,.table td{padding:10px;border-bottom:1px dashed #2a3647;text-align:center}
-  .table th{color:var(--sub);font-weight:600;position:sticky;top:56px;background:var(--card);z-index:5}
-  .player-row{transition:.15s}
-  .player-row:hover{background:#0f141c}
-  .tiny{font-size:12px;color:var(--sub)}
-  .chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-  .chip{padding:8px 10px;border-radius:10px;background:#0f141c;border:1px solid #2a3647}
-  footer{position:fixed;left:0;right:0;bottom:0;background:#0f1620;border-top:1px solid #1b2430}
-  .badge{padding:2px 8px;border-radius:999px;border:1px solid #2b3b4f;color:#bcd0e4}
-  .right{margin-left:auto}
-  .mono{font-family:ui-monospace, Menlo, Consolas, monospace}
-  .footer-pad{height:84px}
-</style>
-</head>
-<body>
-  <header>
-    <div class="wrap row">
-      <h1>德州扑克买入与结算</h1>
-      <span id="balanceTip" class="badge right">试算平衡：0</span>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>德扑买入结算 · ES5 核心版（稳定）</title>
+<body style="font-family:system-ui,-apple-system,Segoe UI,Roboto; background:#0b0f14; color:#e6edf3; margin:0">
+  <header style="position:sticky;top:0;background:#0f1620;border-bottom:1px solid #1b2430">
+    <div style="max-width:980px;margin:0 auto;padding:12px;display:flex;align-items:center;gap:8px">
+      <h3 style="margin:0;font-size:18px">德州扑克买入与结算（ES5 核心版）</h3>
+      <span id="balanceTip" style="margin-left:auto;border:1px solid #2b3b4f;border-radius:999px;padding:2px 8px;color:#bcd0e4">试算平衡：0</span>
     </div>
   </header>
 
-  <main class="wrap grid" style="grid-template-columns:1fr;">
-    <section class="card section">
-      <div class="row" style="gap:12px;align-items:end;flex-wrap:wrap">
-        <div class="grid grid-3" style="gap:8px;flex:1 1 560px;min-width:320px">
-          <div>
-            <label class="tiny">添加玩家昵称</label>
-            <input id="playerName" placeholder="输入昵称，例如：张三" />
-          </div>
-          <div>
-            <label class="tiny">观星费（默认20）</label>
-            <input id="defaultStar" type="number" inputmode="decimal" value="20" />
-          </div>
-          <div>
-            <label class="tiny">会员费（默认20）</label>
-            <input id="defaultMember" type="number" inputmode="decimal" value="20" />
-          </div>
+  <main style="max-width:980px;margin:0 auto;padding:12px;display:grid;gap:12px">
+    <section style="background:#121821;border:1px solid #1b2430;border-radius:12px;padding:12px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">
+        <div style="flex:1 1 280px;min-width:260px">
+          <div style="font-size:12px;color:#a9b6c6">添加玩家昵称</div>
+          <input id="playerName" placeholder="输入昵称，例如：张三" style="width:100%;padding:10px;border-radius:10px;border:1px solid #243142;background:#0f141c;color:#e6edf3"/>
         </div>
-        <div class="row" style="gap:8px">
-          <div>
-            <label class="tiny">结算方式</label>
-            <select id="settleMode">
-              <option value="none">不打折</option>
-              <option value="half">除2</option>
-              <option value="third">除3</option>
-            </select>
-          </div>
-          <button class="btn btn-pri" id="addPlayer" type="button">＋ 添加玩家</button>
-          <button class="btn" id="pasteRoster" type="button">从微信群接龙粘贴解析</button>
+        <div>
+          <div style="font-size:12px;color:#a9b6c6">观星费（默认20）</div>
+          <input id="defaultStar" type="number" value="20" style="width:120px;padding:10px;border-radius:10px;border:1px solid #243142;background:#0f141c;color:#e6edf3" onchange="render()"/>
         </div>
+        <div>
+          <div style="font-size:12px;color:#a9b6c6">会员费（默认20）</div>
+          <input id="defaultMember" type="number" value="20" style="width:120px;padding:10px;border-radius:10px;border:1px solid #243142;background:#0f141c;color:#e6edf3" onchange="render()"/>
+        </div>
+        <div>
+          <div style="font-size:12px;color:#a9b6c6">结算方式</div>
+          <select id="settleMode" style="padding:10px;border-radius:10px;border:1px solid #243142;background:#0f141c;color:#e6edf3" onchange="setMode(this.value)">
+            <option value="none">不打折</option>
+            <option value="half">除2</option>
+            <option value="third">除3</option>
+          </select>
+        </div>
+        <button id="addPlayerBtn" type="button" onclick="onAddPlayer()" style="padding:10px 14px;border-radius:12px;background:#1b2734;border:1px solid #2b3b4f;color:#e6edf3">＋ 添加玩家</button>
+        <button type="button" onclick="toggleRoster()" style="padding:10px 14px;border-radius:12px;background:#1b2734;border:1px solid #2b3b4f;color:#e6edf3">从微信群接龙粘贴解析</button>
       </div>
-      <div id="pasteBox" class="hidden" style="margin-top:10px">
+      <div id="pasteBox" style="display:none;margin-top:10px">
         <textarea id="rosterText" rows="4" placeholder="粘贴微信群接龙，如：
 1. 张三
 2）李四
-3、王五（备注）"></textarea>
-        <div class="row" style="margin-top:6px;gap:8px">
-          <button class="btn btn-ok" id="parseRoster" type="button">解析并添加</button>
-          <span class="tiny">支持格式：1. 张三 / 2）李四 / 3、王五</span>
+3、王五（备注）" style="width:100%;padding:10px;border-radius:10px;border:1px solid #243142;background:#0f141c;color:#e6edf3"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+          <button type="button" onclick="parseRoster()" style="padding:10px 14px;border-radius:12px;background:#1f5730;border:1px solid #1e7a3a;color:#e6edf3">解析并添加</button>
+          <span style="font-size:12px;color:#a9b6c6">支持格式：1. 张三 / 2）李四 / 3、王五</span>
         </div>
       </div>
     </section>
 
-    <section class="card section" style="max-height:55vh;overflow:auto">
-      <table class="table" id="playerTable">
+    <section style="background:#121821;border:1px solid #1b2430;border-radius:12px;padding:12px;max-height:60vh;overflow:auto">
+      <table style="width:100%;border-collapse:separate;border-spacing:0">
         <thead>
-          <tr>
-            <th>#</th>
+          <tr style="color:#a9b6c6;position:sticky;top:0;background:#121821">
+            <th style="padding:8px">#</th>
             <th>昵称</th>
             <th>买入</th>
             <th>快捷</th>
@@ -106,146 +68,91 @@
       </table>
     </section>
 
-    <div class="footer-pad"></div>
+    <section style="background:#121821;border:1px solid #1b2430;border-radius:12px;padding:12px;display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;gap:6px;align-items:center">
+        <span style="font-size:12px">（先点某位玩家“买入”，再按快捷）</span>
+      </div>
+      <div style="display:flex;gap:12px;font-size:14px;color:#a9b6c6">
+        <span>总买入：<b id="sumIn" style="font-family:ui-monospace">0</b></span>
+        <span>总兑现：<b id="sumOut" style="font-family:ui-monospace">0</b></span>
+        <span>差额：<b id="diff" style="font-family:ui-monospace">0</b></span>
+      </div>
+    </section>
   </main>
 
-  <footer>
-    <div class="wrap row" style="gap:8px;align-items:center;justify-content:space-between">
-      <div class="row" style="gap:6px">
-        <button class="btn pill" data-buy="50" type="button">＋50</button>
-        <button class="btn pill" data-buy="100" type="button">＋100</button>
-        <select id="buyMenu" class="pill">
-          <option value="">更多买入</option>
-          <option value="200">＋200</option>
-          <option value="300">＋300</option>
-        </select>
-        <span class="tiny">（先选中某位玩家的“买入”格，再点快捷按钮）</span>
-      </div>
-      <div class="row tiny">
-        <span>总买入：<b id="sumIn" class="mono">0</b></span>
-        <span class="nowrap" style="margin-left:12px">总兑现：<b id="sumOut" class="mono">0</b></span>
-        <span class="nowrap" style="margin-left:12px">差额：<b id="diff" class="mono">0</b></span>
-      </div>
-    </div>
-  </footer>
-
 <script>
-'use strict';
-(function(){
-  // —— 绝不再插入/注册任何 SW 或内联 <script> ——
-  const $ = (s,p=document)=>p.querySelector(s);
-  const $$ = (s,p=document)=>Array.from(p.querySelectorAll(s));
-  const storeKey = 'poker-book-stable-1';
-  const state = { players: [], mode:'none' };
-  let activeBuyInput = null;
+// ====== ES5 纯语法实现 ======
+var storeKey='poker-core-es5-1';
+var state={ players:[], mode:'none' };
+var activeBuyInputId=null;
 
-  function save(){ try{ localStorage.setItem(storeKey, JSON.stringify(state)); }catch(e){} }
-  function load(){
-    try{ const x=JSON.parse(localStorage.getItem(storeKey)); if(x){ state.players=x.players||[]; state.mode=x.mode||'none'; } }catch(e){}
-    const sel=$('#settleMode'); if(sel) sel.value=state.mode;
-    render();
+function $(sel){ return document.querySelector(sel); }
+function save(){ try{ localStorage.setItem(storeKey, JSON.stringify(state)); }catch(e){} }
+function load(){ try{ var x=JSON.parse(localStorage.getItem(storeKey)); if(x){ state=x; } }catch(e){}; var m=$('#settleMode'); if(m){ m.value=state.mode; } render(); }
+
+function currentStar(){ var el=$('#defaultStar'); var v=el&&el.value?el.value:0; return +v||0; }
+function currentMember(){ var el=$('#defaultMember'); var v=el&&el.value?el.value:0; return +v||0; }
+
+function onAddPlayer(){ var v=$('#playerName').value; addPlayer(v); $('#playerName').value=''; }
+function addPlayer(name){ name=(name||'').replace(/^\\s+|\\s+$/g,''); if(!name) return; for(var i=0;i<state.players.length;i++){ if(state.players[i].name===name) return; } var id='id-'+Math.random().toString(36).slice(2)+(+new Date()); state.players.push({id:id,name:name,buyin:0,cashout:0,starFlag:false,memberFlag:false}); save(); render(); }
+function toggleRoster(){ var b=document.getElementById('pasteBox'); b.style.display=(b.style.display==='none'||!b.style.display)?'block':'none'; }
+function parseRoster(){ var t=document.getElementById('rosterText'); var txt=(t&&t.value)||''; var lines=txt.split(/\\r?\\n/); var i,ln,names=[]; for(i=0;i<lines.length;i++){ ln=(lines[i]||'').replace(/^\\s+|\\s+$/g,''); if(!ln) continue; var s=ln; while(s && ' 0123456789.、,，)）]】:：-'.indexOf(s.charAt(0))!==-1){ s=s.slice(1); } var i1=s.indexOf('('), i2=s.indexOf('（'); var cut=[]; if(i1>=0) cut.push(i1); if(i2>=0) cut.push(i2); if(cut.length){ s=s.slice(0, Math.min.apply(null, cut)); } s=s.replace(/^\\s+|\\s+$/g,''); if(s) names.push(s); } if(!names.length){ alert('未识别到昵称'); return; } for(i=0;i<names.length;i++){ addPlayer(names[i]); } if(t) t.value=''; toggleRoster(); }
+
+function setMode(m){ state.mode=m; save(); render(); }
+function byId(id){ for(var i=0;i<state.players.length;i++){ if(state.players[i].id===id) return state.players[i]; } return null; }
+function calcSettle(p){ var buy=+p.buyin||0, cash=+p.cashout||0; var star=p.starFlag?currentStar():0; var mem=p.memberFlag?currentMember():0; var base=cash-buy+star; if(state.mode==='half') base/=2; else if(state.mode==='third') base/=3; return +(base+mem).toFixed(2); }
+function escapeHtml(s){ return (s||'').replace(/[&<>\"']/g, function(c){ return {\"&\":\"&amp;\",\"<\":\"&lt;\",\">\":\"&gt;\",\"\\\"\":\"&quot;\",\"'\":\"&#39;\"}[c]; }); }
+
+function render(){
+  var tb=document.getElementById('tbody'); tb.innerHTML='';
+  for(var i=0;i<state.players.length;i++){
+    var p=state.players[i]; var tr=document.createElement('tr');
+    tr.innerHTML=''
+      + '<td style=\"padding:8px;font-family:ui-monospace\">'+(i+1)+'</td>'
+      + '<td>'+escapeHtml(p.name)+'</td>'
+      + '<td><input type=\"number\" value=\"'+p.buyin+'\" style=\"width:100px\" onfocus=\"activeBuyInputId=\\''+p.id+'\\'\" onchange=\"updateBuy(\\''+p.id+'\\', this.value)\"/></td>'
+      + '<td>'
+      + '  <button type=\"button\" onclick=\"quick(\\''+p.id+'\\',50)\" style=\"padding:6px 10px\">＋50</button>'
+      + '  <button type=\"button\" onclick=\"quick(\\''+p.id+'\\',100)\" style=\"padding:6px 10px\">＋100</button>'
+      + '  <select onchange=\"quick(\\''+p.id+'\\', this.value); this.value=\\'\\'\" style=\"padding:6px 8px\">'
+      + '    <option value=\"\">更多</option>'
+      + '    <option value=\"200\">＋200</option>'
+      + '    <option value=\"300\">＋300</option>'
+      + '  </select>'
+      + '</td>'
+      + '<td><input type=\"number\" value=\"'+p.cashout+'\" style=\"width:100px\" onchange=\"updateCash(\\''+p.id+'\\', this.value)\"/></td>'
+      + '<td style=\"text-align:center\"><input type=\"checkbox\" '+(p.starFlag?'checked':'')+' onchange=\"toggleStar(\\''+p.id+'\\', this.checked)\"/> <span style=\"font-size:12px;color:#a9b6c6\">'+currentStar().toFixed(0)+'</span></td>'
+      + '<td style=\"text-align:center\"><input type=\"checkbox\" '+(p.memberFlag?'checked':'')+' onchange=\"toggleMember(\\''+p.id+'\\', this.checked)\"/> <span style=\"font-size:12px;color:#a9b6c6\">'+currentMember().toFixed(0)+'</span></td>'
+      + '<td style=\"font-family:ui-monospace\">'+calcSettle(p).toFixed(2)+'</td>'
+      + '<td><button type=\"button\" onclick=\"delPlayer(\\''+p.id+'\\')\">删除</button></td>';
+    tb.appendChild(tr);
   }
+  updateTotals(); save();
+}
 
-  function currentStar(){ return +(($('#defaultStar')||{}).value||0); }
-  function currentMember(){ return +(($('#defaultMember')||{}).value||0); }
+function updateTotals(){
+  var totalIn=0,totalOut=0,i;
+  for(i=0;i<state.players.length;i++){ totalIn+=+state.players[i].buyin||0; totalOut+=+state.players[i].cashout||0; }
+  var diff=totalOut-totalIn;
+  document.getElementById('sumIn').textContent=totalIn.toFixed(2);
+  document.getElementById('sumOut').textContent=totalOut.toFixed(2);
+  document.getElementById('diff').textContent=diff.toFixed(2);
+  document.getElementById('balanceTip').textContent = diff===0? '试算平衡：0' : (diff>0? ('试算超额兑付：'+diff.toFixed(2)) : ('试算超额买入：'+(-diff).toFixed(2)));
+}
 
-  function addPlayer(name){
-    name=(name||'').trim(); if(!name) return;
-    if(state.players.some(p=>p.name===name)) return;
-    const id = 'id-'+Math.random().toString(36).slice(2)+Date.now();
-    state.players.push({ id, name, buyin:0, cashout:0, starFlag:false, memberFlag:false });
-    save(); render();
-  }
-  function delPlayer(id){
-    const p=state.players.find(x=>x.id===id); if(!p) return;
-    if((p.buyin||0)>0){ alert('该玩家已有买入记录，不能删除'); return; }
-    state.players=state.players.filter(x=>x.id!==id); save(); render();
-  }
+function updateBuy(id,v){ var p=byId(id); if(!p) return; p.buyin=+v||0; render(); }
+function updateCash(id,v){ var p=byId(id); if(!p) return; p.cashout=+v||0; render(); }
+function quick(id,v){ v=+v||0; var p=byId(id); if(!p) return; p.buyin=(+p.buyin||0)+v; render(); }
+function toggleStar(id,flag){ var p=byId(id); if(!p) return; p.starFlag=!!flag; render(); }
+function toggleMember(id,flag){ var p=byId(id); if(!p) return; p.memberFlag=!!flag; render(); }
+function delPlayer(id){ var p=byId(id); if(!p) return; if((+p.buyin||0)>0){ alert('该玩家已有买入记录，不能删除'); return; } var arr=[],i; for(i=0;i<state.players.length;i++){ if(state.players[i].id!==id) arr.push(state.players[i]); } state.players=arr; render(); }
 
-  function calcSettle(p){
-    const buy=+p.buyin||0, cash=+p.cashout||0;
-    const star = p.starFlag ? currentStar() : 0;
-    const mem  = p.memberFlag ? currentMember() : 0;
-    let base = cash - buy + star;
-    if(state.mode==='half') base/=2; else if(state.mode==='third') base/=3;
-    return +(base + mem).toFixed(2);
-  }
-
-  function trialBalance(){
-    const totalIn=state.players.reduce((a,b)=>a+(+b.buyin||0),0);
-    const totalOut=state.players.reduce((a,b)=>a+(+b.cashout||0),0);
-    const diff=totalOut-totalIn;
-    $('#sumIn').textContent=totalIn.toFixed(2);
-    $('#sumOut').textContent=totalOut.toFixed(2);
-    $('#diff').textContent=diff.toFixed(2);
-    $('#balanceTip').textContent = diff===0? '试算平衡：0' : (diff>0? `试算超额兑付：${diff.toFixed(2)}` : `试算超额买入：${(-diff).toFixed(2)}`);
-  }
-
-  function render(){
-    const tb=$('#tbody'); if(!tb) return; tb.innerHTML='';
-    for(let i=0;i<state.players.length;i++){
-      const p=state.players[i]; const tr=document.createElement('tr'); tr.className='player-row';
-      const settle=calcSettle(p);
-      tr.innerHTML=`
-        <td class="mono">${i+1}</td>
-        <td>${escapeHtml(p.name)}</td>
-        <td><input class="mono buyin" type="number" inputmode="decimal" value="${p.buyin}" data-id="${p.id}" style="width:100px" /></td>
-        <td>
-          <div class="chips">
-            <button class="chip quick" data-id="${p.id}" data-val="50" type="button">＋50</button>
-            <button class="chip quick" data-id="${p.id}" data-val="100" type="button">＋100</button>
-            <select class="chip quicksel" data-id="${p.id}">
-              <option value="">更多</option>
-              <option value="200">＋200</option>
-              <option value="300">＋300</option>
-            </select>
-          </div>
-        </td>
-        <td><input class="mono cashout" type="number" inputmode="decimal" value="${p.cashout}" data-id="${p.id}" style="width:100px" /></td>
-        <td><label style="display:flex;gap:6px;justify-content:center;align-items:center"><input type="checkbox" class="starFlag" data-id="${p.id}" ${p.starFlag?'checked':''}/> <span class="tiny">${currentStar().toFixed(0)}</span></label></td>
-        <td><label style="display:flex;gap:6px;justify-content:center;align-items:center"><input type="checkbox" class="memberFlag" data-id="${p.id}" ${p.memberFlag?'checked':''}/> <span class="tiny">${currentMember().toFixed(0)}</span></label></td>
-        <td class="mono">${settle.toFixed(2)}</td>
-        <td><button class="btn" data-del="${p.id}" type="button">删除</button></td>`;
-      tb.appendChild(tr);
-    }
-    bind(); trialBalance(); save();
-  }
-
-  function bind(){
-    // 输入
-    $$('.buyin').forEach(el=>el.oninput=e=>{ const p=pick(e.target); p.buyin=+e.target.value||0; render(); });
-    $$('.cashout').forEach(el=>el.oninput=e=>{ const p=pick(e.target); p.cashout=+e.target.value||0; render(); });
-    $$('.starFlag').forEach(el=>el.onchange=e=>{ const p=pick(e.target); p.starFlag=e.target.checked; render(); });
-    $$('.memberFlag').forEach(el=>el.onchange=e=>{ const p=pick(e.target); p.memberFlag=e.target.checked; render(); });
-    // 快捷
-    $$('.quick').forEach(btn=>btn.onclick=()=>{ const p=byId(btn.dataset.id); p.buyin=(+p.buyin||0)+(+btn.dataset.val); render(); });
-    $$('.quicksel').forEach(sel=>sel.onchange=()=>{ const v=+sel.value||0; if(!v) return; const p=byId(sel.dataset.id); p.buyin=(+p.buyin||0)+v; sel.value=''; render(); });
-    // 删除
-    $$('button[data-del]').forEach(btn=>btn.onclick=()=>delPlayer(btn.dataset.del));
-  }
-
-  function pick(el){ const id=el.dataset.id; return state.players.find(p=>p.id===id); }
-  function byId(id){ return state.players.find(p=>p.id===id); }
-  function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
-
-  // 顶部按钮
-  $('#addPlayer').onclick=()=>{ const v=$('#playerName').value; addPlayer(v); $('#playerName').value=''; };
-  $('#playerName').onkeydown=e=>{ if(e.key==='Enter'){ $('#addPlayer').click(); } };
-  $('#pasteRoster').onclick=()=>{ $('#pasteBox').classList.toggle('hidden'); };
-  $('#parseRoster').onclick=()=>{
-    const t=$('#rosterText'); const txt=(t&&t.value)||''; const lines=txt.split(/
-?
-/).map(s=>s.trim()).filter(Boolean);
-    const names=[]; for(const ln of lines){ let s=ln.trim(); while(s && (' 0123456789.、,，)）]】:：-'.indexOf(s[0])!==-1)) s=s.slice(1); const i1=s.indexOf('('); const i2=s.indexOf('（'); const cut=[i1,i2].filter(x=>x>=0); if(cut.length){ s=s.slice(0, Math.min(...cut)); } s=s.trim(); if(s) names.push(s); }
-    if(!names.length){ alert('未识别到昵称，请检查格式'); return; }
-    names.forEach(n=>addPlayer(n)); $('#pasteBox').classList.add('hidden'); if(t) t.value='';
-  };
-  $('#settleMode').onchange=e=>{ state.mode=e.target.value; save(); render(); };
-  $('#defaultStar').oninput=()=>render();
-  $('#defaultMember').oninput=()=>render();
-
-  load();
-})();
+// 启动
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded', function(){ var input=document.getElementById('playerName'); if(input){ input.onkeydown=function(e){ e=e||window.event; var k=e.key||e.keyCode; if(k==='Enter'||k===13){ onAddPlayer(); } }; } load(); });
+}else{
+  var input=document.getElementById('playerName'); if(input){ input.onkeydown=function(e){ e=e||window.event; var k=e.key||e.keyCode; if(k==='Enter'||k===13){ onAddPlayer(); } }; } load();
+}
 </script>
 </body>
 </html>
