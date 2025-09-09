@@ -3,31 +3,22 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-<title>德州扑克买入与结算</title>
-<meta name="theme-color" content="#0b0f14"/>
-<meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-<meta name="apple-mobile-web-app-title" content="德扑结算"/>
-<link rel="manifest" id="pwa-manifest-link" href="#"/>
-<link rel="apple-touch-icon" id="apple-touch-icon" href="#"/>
+<title>德州扑克买入与结算（稳定简化版）</title>
 <style>
   :root { --bg:#0b0f14;--card:#121821;--muted:#222a35;--text:#e6edf3;--sub:#a9b6c6;--pri:#3ea6ff;--ok:#22c55e;--warn:#f59e0b;--err:#ef4444; }
   *{box-sizing:border-box}
-  body{margin:0;background:linear-gradient(180deg,#0b0f14,#101720 40%,#0b0f14);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
-  header{position:sticky;top:0;z-index:10;background:rgba(11,15,20,.7);backdrop-filter:blur(8px);border-bottom:1px solid #1b2430}
+  body{margin:0;background:#0b0f14;color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+  header{position:sticky;top:0;z-index:10;background:#0f1620;backdrop-filter:blur(8px);border-bottom:1px solid #1b2430}
   .wrap{max-width:980px;margin:0 auto;padding:12px}
   h1{margin:0;font-size:18px;letter-spacing:.5px}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-  .card{background:var(--card);border:1px solid #1b2430;border-radius:14px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+  .card{background:var(--card);border:1px solid #1b2430;border-radius:14px}
   .section{margin:12px}
   input,select,button,textarea{background:#0f141c;color:var(--text);border:1px solid #243142;border-radius:10px;padding:10px 12px;font-size:15px;outline:none}
-  input:focus,select:focus,textarea:focus{border-color:var(--pri);box-shadow:0 0 0 3px rgba(62,166,255,.15)}
   button{background:linear-gradient(180deg,#1b2734,#141c27);border:1px solid #2b3b4f;cursor:pointer}
-  button:active{transform:translateY(1px)}
   .btn{padding:10px 14px;border-radius:12px}
   .btn-pri{background:linear-gradient(180deg,#1f5a8f,#14446d);border-color:#25618b}
   .btn-ok{background:linear-gradient(180deg,#1f5730,#153d22);border-color:#1e7a3a}
-  .btn-ghost{background:#0f141c}
   .pill{padding:6px 10px;border-radius:999px;border:1px solid #2a3647;background:#0f141c;color:var(--sub)}
   .grid{display:grid;gap:10px}
   .grid-3{grid-template-columns:1.2fr .8fr .8fr}
@@ -37,28 +28,16 @@
   .player-row{transition:.15s}
   .player-row:hover{background:#0f141c}
   .tiny{font-size:12px;color:var(--sub)}
-  .muted{color:var(--sub)}
   .chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
   .chip{padding:8px 10px;border-radius:10px;background:#0f141c;border:1px solid #2a3647}
-  .footer-pad{height:84px}
-  footer{position:fixed;left:0;right:0;bottom:0;background:rgba(13,18,26,.85);backdrop-filter:blur(8px);border-top:1px solid #1b2430}
+  footer{position:fixed;left:0;right:0;bottom:0;background:#0f1620;border-top:1px solid #1b2430}
   .badge{padding:2px 8px;border-radius:999px;border:1px solid #2b3b4f;color:#bcd0e4}
   .right{margin-left:auto}
-  .danger{color:var(--err)}
-  .ok{color:var(--ok)}
-  .nowrap{white-space:nowrap}
-  .scroll{overflow:auto}
-  .hidden{display:none}
-  .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
-  .checkcell{display:flex;gap:8px;justify-content:center;align-items:center}
-  .checkcell label{display:flex;gap:6px;align-items:center}
+  .mono{font-family:ui-monospace, Menlo, Consolas, monospace}
+  .footer-pad{height:84px}
 </style>
 </head>
 <body>
-  <noscript>
-    <div style="padding:12px;background:#fee2e2;color:#7f1d1d;text-align:center;font-size:14px">此应用需要 JavaScript。请用 Safari 打开并“添加到主屏幕”。</div>
-  </noscript>
-
   <header>
     <div class="wrap row">
       <h1>德州扑克买入与结算</h1>
@@ -67,7 +46,6 @@
   </header>
 
   <main class="wrap grid" style="grid-template-columns:1fr;">
-    <!-- 控件区 -->
     <section class="card section">
       <div class="row" style="gap:12px;align-items:end;flex-wrap:wrap">
         <div class="grid grid-3" style="gap:8px;flex:1 1 560px;min-width:320px">
@@ -93,9 +71,8 @@
               <option value="third">除3</option>
             </select>
           </div>
-          <button class="btn btn-pri" id="addPlayer">＋ 添加玩家</button>
-          <button class="btn" id="pasteRoster">从微信群接龙粘贴解析</button>
-          <button class="btn btn-ghost" id="resetAll">清空（长按二次确认）</button>
+          <button class="btn btn-pri" id="addPlayer" type="button">＋ 添加玩家</button>
+          <button class="btn" id="pasteRoster" type="button">从微信群接龙粘贴解析</button>
         </div>
       </div>
       <div id="pasteBox" class="hidden" style="margin-top:10px">
@@ -104,14 +81,13 @@
 2）李四
 3、王五（备注）"></textarea>
         <div class="row" style="margin-top:6px;gap:8px">
-          <button class="btn btn-ok" id="parseRoster">解析并添加</button>
+          <button class="btn btn-ok" id="parseRoster" type="button">解析并添加</button>
           <span class="tiny">支持格式：1. 张三 / 2）李四 / 3、王五</span>
         </div>
       </div>
     </section>
 
-    <!-- 列表区 -->
-    <section class="card section scroll" style="max-height:55vh">
+    <section class="card section" style="max-height:55vh;overflow:auto">
       <table class="table" id="playerTable">
         <thead>
           <tr>
@@ -130,39 +106,14 @@
       </table>
     </section>
 
-    <!-- 导出区 -->
-    <section class="card section">
-      <div class="row" style="gap:8px;flex-wrap:wrap">
-        <button class="btn btn-ok" id="exportImg">导出结算结果为图片</button>
-        <button class="btn" id="shareImg">直接分享（若手机支持）</button>
-        <span class="tiny">图片将自动包含时间、结算方式与每位玩家明细。</span>
-      </div>
-    </section>
-
     <div class="footer-pad"></div>
   </main>
-
-  <!-- 环境检测与友好提示（iOS 文件预览/非 http(s) 协议时） -->
-  <div id="envWarning" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);color:#fff;z-index:9999;">
-    <div style="max-width:680px;margin:10vh auto 0;padding:20px 16px;line-height:1.6">
-      <h2 style="margin:0 0 8px;font-size:18px">需要用 Safari 打开</h2>
-      <div style="font-size:14px;color:#e5e7eb">
-        你当前是以 <span id="protoText"></span> 打开的本地文件，iOS 的“文件”预览不会运行网页脚本，PWA 也必须在 http/https 下才能工作。
-        <br/>请按以下任一方式操作：
-        <ol style="margin:8px 0 0 18px">
-          <li>在“分享”中选择 <b>在 Safari 打开</b>，然后再“添加到主屏幕”。</li>
-          <li>或把此文件放到任意网页托管（如 GitHub Pages / 本地小型 Web 服务器），用 http(s) 访问。</li>
-        </ol>
-      </div>
-      <div style="margin-top:10px"><button id="dismissEnv" class="btn">我知道了</button></div>
-    </div>
-  </div>
 
   <footer>
     <div class="wrap row" style="gap:8px;align-items:center;justify-content:space-between">
       <div class="row" style="gap:6px">
-        <button class="btn pill" data-buy="50">＋50</button>
-        <button class="btn pill" data-buy="100">＋100</button>
+        <button class="btn pill" data-buy="50" type="button">＋50</button>
+        <button class="btn pill" data-buy="100" type="button">＋100</button>
         <select id="buyMenu" class="pill">
           <option value="">更多买入</option>
           <option value="200">＋200</option>
@@ -179,89 +130,70 @@
   </footer>
 
 <script>
+'use strict';
 (function(){
-  // 非 http(s) 环境提示
-  const isHttp = location.protocol==='http:' || location.protocol==='https:';
-  if(!isHttp){
-    const box=document.getElementById('envWarning');
-    if(box){ box.style.display='block'; const pt=location.protocol.replace(':','')||'file'; document.getElementById('protoText').textContent=pt;
-      const btn=document.getElementById('dismissEnv'); if(btn) btn.onclick=()=>{ box.style.display='none'; };
-    }
-  }
-
+  // —— 绝不再插入/注册任何 SW 或内联 <script> ——
   const $ = (s,p=document)=>p.querySelector(s);
-  const $$ = (s,p=document)=>[...p.querySelectorAll(s)];
-  const storeKey = 'poker-book-1.5'; // 结构已变化
+  const $$ = (s,p=document)=>Array.from(p.querySelectorAll(s));
+  const storeKey = 'poker-book-stable-1';
   const state = { players: [], mode:'none' };
   let activeBuyInput = null;
 
+  function save(){ try{ localStorage.setItem(storeKey, JSON.stringify(state)); }catch(e){} }
   function load(){
     try{ const x=JSON.parse(localStorage.getItem(storeKey)); if(x){ state.players=x.players||[]; state.mode=x.mode||'none'; } }catch(e){}
-    $('#settleMode').value = state.mode;
+    const sel=$('#settleMode'); if(sel) sel.value=state.mode;
     render();
   }
-  function save(){ localStorage.setItem(storeKey, JSON.stringify(state)); }
 
-  function speak(text){
-    try{
-      const u = new SpeechSynthesisUtterance(text);
-      const zh = speechSynthesis.getVoices().find(v=>/zh|Chinese/i.test(v.lang));
-      if(zh) u.voice = zh; u.rate = 1; u.pitch = 1; u.volume = 1;
-      speechSynthesis.cancel(); speechSynthesis.speak(u);
-    }catch(e){}
-  }
-
-  function currentStar(){ return +$('#defaultStar').value||0; }
-  function currentMember(){ return +$('#defaultMember').value||0; }
+  function currentStar(){ return +(($('#defaultStar')||{}).value||0); }
+  function currentMember(){ return +(($('#defaultMember')||{}).value||0); }
 
   function addPlayer(name){
-    name = (name||'').trim(); if(!name) return;
+    name=(name||'').trim(); if(!name) return;
     if(state.players.some(p=>p.name===name)) return;
-    const id = (typeof window!=='undefined' && window.crypto && typeof window.crypto.randomUUID==='function') ? window.crypto.randomUUID() : ('id-'+Math.random().toString(36).slice(2)+Date.now());
+    const id = 'id-'+Math.random().toString(36).slice(2)+Date.now();
     state.players.push({ id, name, buyin:0, cashout:0, starFlag:false, memberFlag:false });
     save(); render();
   }
-
   function delPlayer(id){
-    const p = state.players.find(x=>x.id===id); if(!p) return;
+    const p=state.players.find(x=>x.id===id); if(!p) return;
     if((p.buyin||0)>0){ alert('该玩家已有买入记录，不能删除'); return; }
-    state.players = state.players.filter(x=>x.id!==id);
-    save(); render();
+    state.players=state.players.filter(x=>x.id!==id); save(); render();
   }
 
   function calcSettle(p){
-    const buy = +p.buyin||0, cash=+p.cashout||0;
+    const buy=+p.buyin||0, cash=+p.cashout||0;
     const star = p.starFlag ? currentStar() : 0;
     const mem  = p.memberFlag ? currentMember() : 0;
-    let base = (cash - buy + star);
-    let res = base;
-    if(state.mode==='half') res = base/2; else if(state.mode==='third') res = base/3;
-    res = res + mem; return +res.toFixed(2);
+    let base = cash - buy + star;
+    if(state.mode==='half') base/=2; else if(state.mode==='third') base/=3;
+    return +(base + mem).toFixed(2);
   }
 
   function trialBalance(){
-    const totalIn = state.players.reduce((a,b)=>a+(+b.buyin||0),0);
-    const totalOut= state.players.reduce((a,b)=>a+(+b.cashout||0),0);
+    const totalIn=state.players.reduce((a,b)=>a+(+b.buyin||0),0);
+    const totalOut=state.players.reduce((a,b)=>a+(+b.cashout||0),0);
+    const diff=totalOut-totalIn;
     $('#sumIn').textContent=totalIn.toFixed(2);
     $('#sumOut').textContent=totalOut.toFixed(2);
-    const diff = totalOut - totalIn; $('#diff').textContent=diff.toFixed(2);
-    const tip = diff===0? '试算平衡：0' : (diff>0? `试算超额兑付：${diff.toFixed(2)}` : `试算超额买入：${(-diff).toFixed(2)}`);
-    const el = $('#balanceTip'); el.textContent=tip; el.style.borderColor = diff===0? '#2b3b4f' : (diff>0? '#f59e0b':'#3ea6ff');
+    $('#diff').textContent=diff.toFixed(2);
+    $('#balanceTip').textContent = diff===0? '试算平衡：0' : (diff>0? `试算超额兑付：${diff.toFixed(2)}` : `试算超额买入：${(-diff).toFixed(2)}`);
   }
 
   function render(){
-    const tb = $('#tbody'); tb.innerHTML='';
-    state.players.forEach((p,idx)=>{
-      const tr = document.createElement('tr'); tr.className='player-row';
-      const settle = calcSettle(p);
-      tr.innerHTML = `
-        <td class="mono">${idx+1}</td>
-        <td><div style="display:flex;align-items:center;gap:6px;justify-content:center"><span>${escapeHtml(p.name)}</span></div></td>
+    const tb=$('#tbody'); if(!tb) return; tb.innerHTML='';
+    for(let i=0;i<state.players.length;i++){
+      const p=state.players[i]; const tr=document.createElement('tr'); tr.className='player-row';
+      const settle=calcSettle(p);
+      tr.innerHTML=`
+        <td class="mono">${i+1}</td>
+        <td>${escapeHtml(p.name)}</td>
         <td><input class="mono buyin" type="number" inputmode="decimal" value="${p.buyin}" data-id="${p.id}" style="width:100px" /></td>
         <td>
           <div class="chips">
-            <button class="chip quick" data-id="${p.id}" data-val="50">＋50</button>
-            <button class="chip quick" data-id="${p.id}" data-val="100">＋100</button>
+            <button class="chip quick" data-id="${p.id}" data-val="50" type="button">＋50</button>
+            <button class="chip quick" data-id="${p.id}" data-val="100" type="button">＋100</button>
             <select class="chip quicksel" data-id="${p.id}">
               <option value="">更多</option>
               <option value="200">＋200</option>
@@ -270,153 +202,47 @@
           </div>
         </td>
         <td><input class="mono cashout" type="number" inputmode="decimal" value="${p.cashout}" data-id="${p.id}" style="width:100px" /></td>
-        <td class="checkcell">
-          <label><input type="checkbox" class="starFlag" data-id="${p.id}" ${p.starFlag? 'checked':''}/> <span class="tiny">${currentStar().toFixed(0)}</span></label>
-        </td>
-        <td class="checkcell">
-          <label><input type="checkbox" class="memberFlag" data-id="${p.id}" ${p.memberFlag? 'checked':''}/> <span class="tiny">${currentMember().toFixed(0)}</span></label>
-        </td>
-        <td class="mono ${settle>0?'ok':(settle<0?'danger':'')}">${settle.toFixed(2)}</td>
-        <td><button class="btn btn-ghost del" data-id="${p.id}">删除</button></td>`;
+        <td><label style="display:flex;gap:6px;justify-content:center;align-items:center"><input type="checkbox" class="starFlag" data-id="${p.id}" ${p.starFlag?'checked':''}/> <span class="tiny">${currentStar().toFixed(0)}</span></label></td>
+        <td><label style="display:flex;gap:6px;justify-content:center;align-items:center"><input type="checkbox" class="memberFlag" data-id="${p.id}" ${p.memberFlag?'checked':''}/> <span class="tiny">${currentMember().toFixed(0)}</span></label></td>
+        <td class="mono">${settle.toFixed(2)}</td>
+        <td><button class="btn" data-del="${p.id}" type="button">删除</button></td>`;
       tb.appendChild(tr);
-    });
-    bindRowEvents(); trialBalance(); save();
+    }
+    bind(); trialBalance(); save();
   }
 
-  function bindRowEvents(){
-    $$("input.buyin").forEach(inp=>{
-      inp.addEventListener('focus',()=>{activeBuyInput=inp;});
-      inp.addEventListener('input',e=>{ const id=e.target.dataset.id; const p=state.players.find(x=>x.id===id); p.buyin=+e.target.value||0; render(); });
-    });
-    $$("input.cashout").forEach(inp=>{
-      inp.addEventListener('input',e=>{ const id=e.target.dataset.id; const p=state.players.find(x=>x.id===id); p.cashout=+e.target.value||0; render(); });
-    });
-    $$("input.starFlag").forEach(inp=>{ inp.addEventListener('change',e=>{ const p=state.players.find(x=>x.id===e.target.dataset.id); p.starFlag=e.target.checked; render(); }); });
-    $$("input.memberFlag").forEach(inp=>{ inp.addEventListener('change',e=>{ const p=state.players.find(x=>x.id===e.target.dataset.id); p.memberFlag=e.target.checked; render(); }); });
-    $$("button.del").forEach(btn=>{ btn.addEventListener('click',()=>delPlayer(btn.dataset.id)); });
-    $$("button.quick").forEach(btn=>{ btn.addEventListener('click',()=>{ const id=btn.dataset.id; const val=+btn.dataset.val; const p=state.players.find(x=>x.id===id); p.buyin=(+p.buyin||0)+val; render(); speak(`${p.name}买入 ${val}`); }); });
-    $$("select.quicksel").forEach(sel=>{ sel.addEventListener('change',()=>{ const id=sel.dataset.id; const v=+sel.value||0; if(!v) return; const p=state.players.find(x=>x.id===id); p.buyin=(+p.buyin||0)+v; sel.value=''; render(); speak(`${p.name}买入 ${v}`); }); });
+  function bind(){
+    // 输入
+    $$('.buyin').forEach(el=>el.oninput=e=>{ const p=pick(e.target); p.buyin=+e.target.value||0; render(); });
+    $$('.cashout').forEach(el=>el.oninput=e=>{ const p=pick(e.target); p.cashout=+e.target.value||0; render(); });
+    $$('.starFlag').forEach(el=>el.onchange=e=>{ const p=pick(e.target); p.starFlag=e.target.checked; render(); });
+    $$('.memberFlag').forEach(el=>el.onchange=e=>{ const p=pick(e.target); p.memberFlag=e.target.checked; render(); });
+    // 快捷
+    $$('.quick').forEach(btn=>btn.onclick=()=>{ const p=byId(btn.dataset.id); p.buyin=(+p.buyin||0)+(+btn.dataset.val); render(); });
+    $$('.quicksel').forEach(sel=>sel.onchange=()=>{ const v=+sel.value||0; if(!v) return; const p=byId(sel.dataset.id); p.buyin=(+p.buyin||0)+v; sel.value=''; render(); });
+    // 删除
+    $$('button[data-del]').forEach(btn=>btn.onclick=()=>delPlayer(btn.dataset.del));
   }
 
-  // 顶部控件
-  $('#addPlayer').addEventListener('click',()=>{ addPlayer($('#playerName').value); $('#playerName').value=''; });
-  $('#playerName').addEventListener('keydown',e=>{ if(e.key==='Enter') $('#addPlayer').click(); });
-  $('#settleMode').addEventListener('change',e=>{ state.mode=e.target.value; save(); render(); });
-  $('#pasteRoster').addEventListener('click',()=>{ $('#pasteBox').classList.toggle('hidden'); });
-  $('#parseRoster').addEventListener('click',()=>{
-    const txt=$('#rosterText').value||''; const lines=txt.split(/
+  function pick(el){ const id=el.dataset.id; return state.players.find(p=>p.id===id); }
+  function byId(id){ return state.players.find(p=>p.id===id); }
+  function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+
+  // 顶部按钮
+  $('#addPlayer').onclick=()=>{ const v=$('#playerName').value; addPlayer(v); $('#playerName').value=''; };
+  $('#playerName').onkeydown=e=>{ if(e.key==='Enter'){ $('#addPlayer').click(); } };
+  $('#pasteRoster').onclick=()=>{ $('#pasteBox').classList.toggle('hidden'); };
+  $('#parseRoster').onclick=()=>{
+    const t=$('#rosterText'); const txt=(t&&t.value)||''; const lines=txt.split(/
 ?
 /).map(s=>s.trim()).filter(Boolean);
-    const names=[];
-    for(const ln of lines){
-      let s=ln.trim();
-      while(s && (' 0123456789.、,，)）]】:：-'.indexOf(s[0])!==-1)) s=s.slice(1);
-      const i1=s.indexOf('('); const i2=s.indexOf('（');
-      const cut = [i1,i2].filter(x=>x>=0); if(cut.length){ s=s.slice(0, Math.min(...cut)); }
-      s=s.trim(); if(s) names.push(s);
-    }
+    const names=[]; for(const ln of lines){ let s=ln.trim(); while(s && (' 0123456789.、,，)）]】:：-'.indexOf(s[0])!==-1)) s=s.slice(1); const i1=s.indexOf('('); const i2=s.indexOf('（'); const cut=[i1,i2].filter(x=>x>=0); if(cut.length){ s=s.slice(0, Math.min(...cut)); } s=s.trim(); if(s) names.push(s); }
     if(!names.length){ alert('未识别到昵称，请检查格式'); return; }
-    names.forEach(n=>addPlayer(n)); $('#pasteBox').classList.add('hidden'); $('#rosterText').value='';
-  });
-
-  // 底部快捷买入（针对正在编辑的买入格）
-  $$('button[data-buy]').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      const val=+btn.dataset.buy; if(!activeBuyInput){ alert('请先点某位玩家“买入”输入框'); return; }
-      const id=activeBuyInput.dataset.id; const p=state.players.find(x=>x.id===id); p.buyin=(+p.buyin||0)+val; render(); speak(`${p.name}买入 ${val}`);
-      const el=$(`input.buyin[data-id="${id}"]`); if(el){ el.focus(); }
-    });
-  });
-  $('#buyMenu').addEventListener('change',e=>{
-    const val=+e.target.value; e.target.value=''; if(!val) return;
-    if(!activeBuyInput){ alert('请先点某位玩家“买入”输入框'); return; }
-    const id=activeBuyInput.dataset.id; const p=state.players.find(x=>x.id===id); p.buyin=(+p.buyin||0)+val; render(); speak(`${p.name}买入 ${val}`);
-    const el=$(`input.buyin[data-id="${id}"]`); if(el){ el.focus(); }
-  });
-
-  // 当默认观星/会员费改动时，刷新行金额显示
-  $('#defaultStar').addEventListener('input',()=>render());
-  $('#defaultMember').addEventListener('input',()=>render());
-
-  // 清空
-  let resetGuard=0; $('#resetAll').addEventListener('touchstart',()=>resetGuard=Date.now());
-  $('#resetAll').addEventListener('mousedown',()=>resetGuard=Date.now());
-  $('#resetAll').addEventListener('click',()=>{ if(Date.now()-resetGuard<600){ if(confirm('确认清空所有数据？')){ state.players=[]; save(); render(); } } });
-
-  // 导出图片（Canvas 绘制）
-  async function exportAsImage(share=false){
-    const rows = Math.max(state.players.length,1);
-    const width = 1080; const height = 220 + rows*72 + 80;
-    const canvas = document.createElement('canvas'); canvas.width=width; canvas.height=height; const ctx=canvas.getContext('2d');
-    const g=ctx.createLinearGradient(0,0,0,height); g.addColorStop(0,'#101624'); g.addColorStop(1,'#0b0f17'); ctx.fillStyle=g; ctx.fillRect(0,0,width,height);
-    ctx.fillStyle='#e6edf3'; ctx.font='bold 44px system-ui, -apple-system, Segoe UI, Roboto'; ctx.fillText('德州扑克结算单',40,70);
-    ctx.font='28px system-ui, -apple-system, Segoe UI, Roboto'; const time=new Date().toLocaleString();
-    ctx.fillStyle='#a9b6c6'; ctx.fillText(`时间：${time}    结算方式：${modeLabel(state.mode)}`,40,110);
-    const cols=[{k:'idx',w:70,t:'#'},{k:'name',w:260,t:'昵称'},{k:'buyin',w:160,t:'买入'},{k:'cash',w:160,t:'兑现'},{k:'star',w:140,t:'观星'},{k:'mem',w:140,t:'会员'},{k:'res',w:170,t:'结算'}];
-    let x=40,y=160; ctx.fillStyle='#bcd0e4'; ctx.font='600 26px system-ui'; cols.forEach(c=>{ ctx.fillText(c.t,x,y); x+=c.w; });
-    y+=20; ctx.strokeStyle='#263246'; ctx.font='26px system-ui'; ctx.fillStyle='#e6edf3';
-    state.players.forEach((p,i)=>{
-      x=40; y+=52; const res=calcSettle(p);
-      const star = p.starFlag ? currentStar() : 0; const mem = p.memberFlag ? currentMember() : 0;
-      const row=[i+1,p.name,fix(p.buyin),fix(p.cashout),fix(star),fix(mem),fix(res)];
-      row.forEach((v)=>{ ctx.fillText(String(v),x,y); x+=cols.shift?0:0; });
-      // 手动列位移
-      x=40+70+260+160+160; ctx.fillText(fix(star),x,y); x+=140; ctx.fillText(fix(mem),x,y); x+=170; // 对齐修正
-      // 重新严格绘制整行：
-      x=40; const items=[i+1,p.name,fix(p.buyin),fix(p.cashout),fix(star),fix(mem),fix(res)]; const widths=[70,260,160,160,140,140,170];
-      for(let k=0;k<items.length;k++){ ctx.fillStyle = (k===6? (res>0?'#22c55e':(res<0?'#ef4444':'#e6edf3')):'#e6edf3'); ctx.fillText(String(items[k]), x, y); x+=widths[k]; }
-      ctx.globalAlpha=.25; ctx.beginPath(); ctx.moveTo(40,y+16); ctx.lineTo(width-40,y+16); ctx.stroke(); ctx.globalAlpha=1;
-    });
-    const totalIn = state.players.reduce((a,b)=>a+(+b.buyin||0),0);
-    const totalOut= state.players.reduce((a,b)=>a+(+b.cashout||0),0);
-    const diff = totalOut-totalIn;
-    y+=70; ctx.font='600 28px system-ui'; ctx.fillStyle='#bcd0e4';
-    ctx.fillText(`合计 买入：${fix(totalIn)}   兑现：${fix(totalOut)}   差额：${fix(diff)}`,40,y);
-
-    const blob = await new Promise(r=>canvas.toBlob(r,'image/png'));
-    const file = new File([blob], `德扑结算_${Date.now()}.png`, {type:'image/png'});
-    const url = URL.createObjectURL(blob);
-    if(share && navigator.share){ try{ await navigator.share({ files:[file], title:'德扑结算', text:'结算结果' }); }catch(e){ download(url,file.name); } }
-    else{ download(url, file.name); }
-    setTimeout(()=>URL.revokeObjectURL(url),5000);
-  }
-  function download(url, name){ const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove(); }
-  function fix(n){ return (+(n||0)).toFixed(2); }
-  function escapeHtml(s){ return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
-  function modeLabel(m){ return m==='half'? '除2' : m==='third'? '除3' : '不打折'; }
-
-  $('#exportImg').addEventListener('click',()=>exportAsImage(false));
-  $('#shareImg').addEventListener('click',()=>exportAsImage(true));
-
-  // === PWA：动态 manifest + 内联 Service Worker ===
-  (function setupPWA(){
-    function makeIcon(size){
-      const c=document.createElement('canvas'); c.width=c.height=size; const ctx=c.getContext('2d');
-      ctx.fillStyle='#111827'; ctx.fillRect(0,0,size,size); const r=size*0.44;
-      ctx.beginPath(); ctx.arc(size/2,size/2,r,0,Math.PI*2); ctx.fillStyle='#dc2626'; ctx.fill();
-      ctx.beginPath(); ctx.arc(size/2,size/2,r*0.78,0,Math.PI*2); ctx.lineWidth=Math.max(6,size*0.04); ctx.strokeStyle='#ffffff'; ctx.stroke();
-      ctx.fillStyle='#ffffff'; ctx.font=`${Math.floor(size*0.45)}px system-ui,-apple-system,Segoe UI,Roboto`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('♠', size/2, size/2+size*0.02);
-      return c.toDataURL('image/png');
-    }
-    const icons=[192,256,384,512].map(s=>({src:makeIcon(s), sizes:`${s}x${s}`, type:'image/png', purpose:'any maskable'}));
-    const manifest={ name:'德州扑克买入与结算', short_name:'德扑结算', start_url:'./', display:'standalone', background_color:'#0b0f14', theme_color:'#0b0f14', icons };
-    const blob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
-    const url=URL.createObjectURL(blob);
-    const link=document.getElementById('pwa-manifest-link'); if(link) link.href=url;
-    const apple=document.getElementById('apple-touch-icon'); if(apple) apple.href=icons[0].src;
-
-    if('serviceWorker' in navigator){
-      const swCode=`
-        const CACHE='poker-book-v5';
-        self.addEventListener('install',e=>{ e.waitUntil((async()=>{ const c=await caches.open(CACHE); await c.addAll(['./']); self.skipWaiting(); })()); });
-        self.addEventListener('activate',e=>{ e.waitUntil((async()=>{ const keys=await caches.keys(); await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))); self.clients.claim(); })()); });
-        self.addEventListener('fetch',e=>{ const req=e.request; if(req.mode==='navigate' || (req.method==='GET' && new URL(req.url).origin===location.origin)){ e.respondWith((async()=>{ const cache=await caches.open(CACHE); const cached=await cache.match(req,{ignoreSearch:true}); if(cached){ fetch(req).then(res=>{ if(res && res.ok) cache.put(req,res.clone()); }).catch(()=>{}); return cached; } try{ const res=await fetch(req); if(res && res.ok) cache.put(req,res.clone()); return res; }catch(err){ const shell=await cache.match('./'); return shell || Response.error(); } })()); } });
-      `;
-      const swBlob=new Blob([swCode],{type:'text/javascript'});
-      const swUrl=URL.createObjectURL(swBlob);
-      navigator.serviceWorker.register(swUrl);
-    }
-  })();
+    names.forEach(n=>addPlayer(n)); $('#pasteBox').classList.add('hidden'); if(t) t.value='';
+  };
+  $('#settleMode').onchange=e=>{ state.mode=e.target.value; save(); render(); };
+  $('#defaultStar').oninput=()=>render();
+  $('#defaultMember').oninput=()=>render();
 
   load();
 })();
