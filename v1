@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>德州扑克买入与结算</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b0f14" />
+<style>
+  /* 保持原有样式 */
+</style>
+  
+<meta name="theme-color" content="#0b0f14"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="德扑结算"/>
+<link rel="manifest" id="pwa-manifest-link" href="#"/>
+<link rel="apple-touch-icon" id="apple-touch-icon" href="#"/>
+</head>
+<body>
+  <!-- 保持原有HTML结构 -->
+
+<script>
+(function(){
+  // 保持原有JS逻辑
+
+  // 注册 Service Worker 以启用 PWA
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+      navigator.serviceWorker.register('sw.js').then(function(reg) {
+        console.log('ServiceWorker 注册成功: ', reg);
+      }).catch(function(err) {
+        console.log('ServiceWorker 注册失败: ', err);
+      });
+    });
+  }
+})();
+</script>
+
+<script>
+// === PWA：动态生成 manifest 与注册 Service Worker（无需多文件） ===
+(function(){
+  // 生成一张简洁图标（PNG dataURL）
+  function makeIcon(size){
+    const c=document.createElement('canvas'); c.width=c.height=size; const ctx=c.getContext('2d');
+    // 背景圆
+    ctx.fillStyle='#111827'; ctx.fillRect(0,0,size,size);
+    const r=size*0.44; ctx.beginPath(); ctx.arc(size/2,size/2,r,0,Math.PI*2); ctx.fillStyle='#dc2626'; ctx.fill();
+    // 内圈
+    ctx.beginPath(); ctx.arc(size/2,size/2,r*0.78,0,Math.PI*2); ctx.lineWidth=Math.max(6,size*0.04); ctx.strokeStyle='#ffffff'; ctx.stroke();
+    // 文字符号
+    ctx.fillStyle='#ffffff';
+    ctx.font=`${Math.floor(size*0.45)}px system-ui,-apple-system,Segoe UI,Roboto`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('♠', size/2, size/2+size*0.02);
+    return c.toDataURL('image/png');
+  }
+
+  const icons=[192,256,384,512].map(s=>({src:makeIcon(s), sizes:`${s}x${s}`, type:'image/png', purpose:'any maskable'}));
+
+  const manifest={
+    name:'德州扑克买入与结算',
+    short_name:'德扑结算',
+    description:'离线可用的德州扑克买入与结算工具（语音播报、图片导出、接龙解析）',
+    start_url:'./',
+    display:'standalone',
+    background_color:'#0b0f14',
+    theme_color:'#0b0f14',
+    icons
+  };
+  const blob=new Blob([JSON.stringify(manifest)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const link=document.getElementById('pwa-manifest-link'); link.href=url;
+  const apple=document.getElementById('apple-touch-icon'); apple.href=icons[0].src;
+
+  // 注册 Service Worker（缓存当前单文件以便离线使用）
+  if('serviceWorker' in navigator){
+    const swCode=`
+      const CACHE='poker-book-v3';
+      self.addEventListener('install',e=>{
+        e.waitUntil((async()=>{
+          const c=await caches.open(CACHE);
+          await c.addAll(['./']);
+          self.skipWaiting();
+        })());
+      });
+      self.addEventListener('activate',e=>{
+        e.waitUntil((async()=>{
+          const keys=await caches.keys();
+          await Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)));
+          self.clients.claim();
+        })());
+      });
+      self.addEventListener('fetch',e=>{
+        const req=e.request;
+        // 对导航请求与同源资源采取缓存优先，网络回源
+        if(req.mode==='navigate' || (req.method==='GET' && new URL(req.url).origin===location.origin)){
+          e.respondWith((async()=>{
+            const cache=await caches.open(CACHE);
+            const cached=await cache.match(req, {ignoreSearch:true});
+            if(cached){
+              // 静默更新
+              fetch(req).then(res=>{ if(res && res.ok){ cache.put(req, res.clone()); } }).catch(()=>{});
+              return cached;
+            }
+            try{
+              const res=await fetch(req);
+              if(res && res.ok) cache.put(req, res.clone());
+              return res;
+            }catch(err){
+              // 离线兜底：返回缓存的入口页
+              const shell=await cache.match('./');
+              return shell || Response.error();
+            }
+          })());
+        }
+      });
+    `;
+    const swBlob=new Blob([swCode],{type:'text/javascript'});
+    const swUrl=URL.createObjectURL(swBlob);
+    navigator.serviceWorker.register(swUrl);
+  }
+})();
+</script>
+</body>
+</html>
