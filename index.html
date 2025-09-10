@@ -1,340 +1,291 @@
-import React, { useMemo, useState, useEffect, useRef } from "react";
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>德州扑克买入结算工具</title>
+    <!-- Tailwind Play CDN（便于在 GitHub Pages 直接运行，无需打包） -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React 18 + Babel Standalone（让 JSX 在浏览器侧转译） -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      /* 去除 number 的箭头（我们用纯文本数字输入） */
+      input.no-spinner::-webkit-outer-spin-button,
+      input.no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+      input.no-spinner { -moz-appearance: textfield; }
+    </style>
+  </head>
+  <body class="bg-[#f5f7fb]">
+    <div id="root"></div>
 
-/**
- * 德州扑克买入结算工具（含语音播报 + 底部统计回归 + 显示栏顺序：净额/折后/税）
- * 功能概要：
- * - 全局折扣：不打折 / 除2 / 除3，仅影响“买入”。
- * - 折后按 5 元向上取整；取整溢出合计入税池。
- * - 试算平衡 = 折前总买入 - 折前总兑付；可“接受差额”，按折扣折后入税池，并抵消显示。
- * - 会员费不打折；会员优惠与抵税规则（仅会员次数≥2）：
- *   - 若（折后取整+观星-兑付）亏损 ≥300 → 会员费减半；若亏损在 [200,299] → 会员费减10。
- *   - 若该玩家需缴税 ≥40 → 抵税20；若在[20,40) → 抵税10。
- * - 税制：个人净赢>0 按固额阶梯征税：<50:0；[50,75):5；[75,125):10；[125,175):15；其后每+50加5。
- * - 买入快捷：+100 按钮；下拉 +50/+200/+300。
- * - 兑付为纯数字文本输入，避免浏览器数字控件“滴”声问题。
- * - 语音播报：买入、会员增加、观星勾选（可开关与调语速）。
- */
+    <script type="text/babel">
+      const { useMemo, useState, useEffect, useRef } = React;
 
-const initialNames = [
-  "Jim", "李岳霖", "Jack", "Ying qi", "Annmary", "Bo", "Sue", "赫", "Emma", "Sun", "Alex", "Tony", "柯", "Dudu", "二维马",
-];
+      // —— 常量 ——
+      const initialNames = [
+        "Jim", "李岳霖", "Jack", "Ying qi", "Annmary", "Bo", "Sue", "赫", "Emma", "Sun", "Alex", "Tony", "柯", "Dudu", "二维马",
+      ];
+      const DiscountOptions = [
+        { key: "none", label: "不打折", factor: 1 },
+        { key: "half", label: "除2", factor: 0.5 },
+        { key: "third", label: "除3", factor: 1/3 },
+      ];
 
-const DiscountOptions = [
-  { key: "none", label: "不打折", factor: 1 },
-  { key: "half", label: "除2", factor: 0.5 },
-  { key: "third", label: "除3", factor: 1 / 3 },
-];
+      // —— 工具函数 ——
+      const currency = (n) => (Math.round((Number(n)||0) * 100) / 100).toFixed(2);
+      const clampMinZero = (n) => Math.max(0, Number(n)||0);
+      const tierTaxByWin = (win) => {
+        const w = Number(win)||0; if (w < 50) return 0; if (w < 75) return 5; const blocks = Math.floor((w-75)/50); return 10 + 5*blocks;
+      };
 
-function currency(n) { return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2); }
-function clampMinZero(n) { return Math.max(0, Number(n) || 0); }
+      // —— 核心计算 ——
+      function computeAll(players, globalDiscountKey, starFee, memberFee, acceptedDiffRaw){
+        const factor = (DiscountOptions.find(d=>d.key===globalDiscountKey)||{factor:1}).factor;
+        const totalBuyRaw = players.reduce((a,p)=>a+(p.buys||[]).reduce((x,y)=>x+y,0),0);
+        const totalPayoutRaw = players.reduce((a,p)=>a+Number(p.payoutStr?Number(p.payoutStr):0),0);
+        const trialBalanceRaw = totalBuyRaw - totalPayoutRaw;
+        const trialBalanceVisible = trialBalanceRaw - (acceptedDiffRaw||0);
 
-function tierTaxByWin(win) {
-  const w = Number(win) || 0;
-  if (w < 50) return 0;
-  if (w < 75) return 5;
-  const blocks = Math.floor((w - 75) / 50); // 75-124→0；125-174→1；...
-  return 10 + 5 * blocks;
-}
+        let totalBuyDiscounted = 0;
+        let totalBuyDiscountedRounded = 0;
+        let totalRoundingOverflow = 0;
+        let totalTaxPlayers = 0;
 
-function computeAll(players, globalDiscountKey, starFee, memberFee, acceptedDiffRaw) {
-  const factor = (DiscountOptions.find((d) => d.key === globalDiscountKey) || { factor: 1 }).factor;
+        const rows = players.map((p)=>{
+          const rawBuy = (p.buys||[]).reduce((s,v)=>s+v,0);
+          const discountedBuy = rawBuy * factor;                         // 买入打折
+          const discountedBuyRounded = Math.ceil(discountedBuy/5)*5;     // 5 元向上取整
+          const roundingOverflow = discountedBuyRounded - discountedBuy;  // 溢出进入税池
+          const star = p.stargazer ? Number(starFee)||0 : 0;             // 观星不打折
+          const memberBase = (Number(p.memberCount||0)||0) * (Number(memberFee)||0); // 会员不打折
+          const payout = Number(p.payoutStr?Number(p.payoutStr):0);
 
-  // 折前汇总（用于试算平衡）
-  const totalBuyRaw = players.reduce((a, p) => a + (p.buys || []).reduce((x, y) => x + y, 0), 0);
-  const totalPayoutRaw = players.reduce((a, p) => a + Number(p.payoutStr ? Number(p.payoutStr) : 0), 0);
-  const trialBalanceRaw = totalBuyRaw - totalPayoutRaw;
-  const trialBalanceVisible = trialBalanceRaw - (acceptedDiffRaw || 0);
+          // 会员优惠判断基于：折后取整 + 观星 - 兑付（不含会员费）
+          const lossForRelief = (discountedBuyRounded + star) - payout;
+          let memberAfterRelief = memberBase;
+          if ((p.memberCount||0) >= 2){
+            if (lossForRelief >= 300) memberAfterRelief = memberBase*0.5;
+            else if (lossForRelief >= 200) memberAfterRelief = clampMinZero(memberBase-10);
+          }
 
-  let totalBuyDiscounted = 0;
-  let totalBuyDiscountedRounded = 0;
-  let totalRoundingOverflow = 0;
-  let totalTaxPlayers = 0;
+          const cost = discountedBuyRounded + star + memberAfterRelief;
+          const net = payout - cost;
+          let tax = tierTaxByWin(net);
+          if ((p.memberCount||0) >= 2){
+            if (tax >= 40) tax = clampMinZero(tax-20); else if (tax >= 20) tax = clampMinZero(tax-10);
+          }
 
-  const rows = players.map((p) => {
-    const rawBuy = (p.buys || []).reduce((s, v) => s + v, 0);
-    const discountedBuy = rawBuy * factor; // 买入打折
-    const discountedBuyRounded = Math.ceil(discountedBuy / 5) * 5; // 5 元向上取整
-    const roundingOverflow = discountedBuyRounded - discountedBuy; // 入税池
+          totalBuyDiscounted += discountedBuy;
+          totalBuyDiscountedRounded += discountedBuyRounded;
+          totalRoundingOverflow += roundingOverflow;
+          if (tax > 0) totalTaxPlayers += tax;
 
-    const star = p.stargazer ? Number(starFee) || 0 : 0; // 不打折
+          return {
+            id: p.id, name: p.name, buys: p.buys, memberCount: p.memberCount, stargazer: p.stargazer,
+            payoutStr: p.payoutStr, rawBuy, discountedBuy, discountedBuyRounded, roundingOverflow,
+            star, memberBase, memberAfterRelief, lossForRelief, cost, net, tax,
+          };
+        });
 
-    const memberBase = (Number(p.memberCount || 0) || 0) * (Number(memberFee) || 0); // 不打折
+        return {
+          factor, rows,
+          totalBuyRaw, totalPayoutRaw,
+          trialBalanceRaw, trialBalanceVisible,
+          totalBuyDiscounted, totalBuyDiscountedRounded, totalRoundingOverflow,
+          totalTaxPlayers,
+        };
+      }
 
-    const payout = Number(p.payoutStr ? Number(p.payoutStr) : 0);
-    const lossForRelief = (discountedBuyRounded + star) - payout; // 亏损（不含会员费）
+      // —— UI ——
+      function Card({children}){ return <div className="bg-white rounded-2xl shadow p-4">{children}</div>; }
 
-    let memberAfterRelief = memberBase;
-    if ((p.memberCount || 0) >= 2) {
-      if (lossForRelief >= 300) memberAfterRelief = memberBase * 0.5;
-      else if (lossForRelief >= 200) memberAfterRelief = clampMinZero(memberBase - 10);
-    }
+      function App(){
+        // 语音播报
+        const [speakOn,setSpeakOn] = useState(true);
+        const [speakRate,setSpeakRate] = useState(1.0);
+        const speakLock = useRef(false);
+        const speak = (text)=>{
+          try {
+            if (!speakOn || typeof window==='undefined' || !window.speechSynthesis) return;
+            if (speakLock.current) return;
+            speakLock.current = true; const u = new SpeechSynthesisUtterance(text);
+            u.rate = speakRate; u.lang = 'zh-CN'; u.onend = ()=>{speakLock.current=false}; window.speechSynthesis.speak(u);
+          } catch {}
+        };
 
-    const cost = discountedBuyRounded + star + memberAfterRelief;
-    const net = payout - cost; // >0 净赢
+        // 全局设置
+        const [globalDiscountKey,setGlobalDiscountKey] = useState('none');
+        const [starFee,setStarFee] = useState(20);
+        const [memberFee,setMemberFee] = useState(20);
 
-    let tax = tierTaxByWin(net);
-    if ((p.memberCount || 0) >= 2) {
-      if (tax >= 40) tax = clampMinZero(tax - 20);
-      else if (tax >= 20) tax = clampMinZero(tax - 10);
-    }
+        // 已接受差额（原始）与折后入税池累计
+        const [acceptedDiffRaw,setAcceptedDiffRaw] = useState(0);
+        const [acceptedTaxFromDiff,setAcceptedTaxFromDiff] = useState(0);
 
-    totalBuyDiscounted += discountedBuy;
-    totalBuyDiscountedRounded += discountedBuyRounded;
-    totalRoundingOverflow += roundingOverflow;
-    if (tax > 0) totalTaxPlayers += tax;
+        // 玩家
+        const [players,setPlayers] = useState(()=> initialNames.map((name,idx)=>({ id: String(idx+1), name, buys:[], payoutStr:'0', stargazer:false, memberCount:0 })));
+        const [newPlayerName,setNewPlayerName] = useState('');
 
-    return {
-      id: p.id,
-      name: p.name,
-      buys: p.buys,
-      memberCount: p.memberCount,
-      stargazer: p.stargazer,
-      payoutStr: p.payoutStr,
-      rawBuy,
-      discountedBuy,
-      discountedBuyRounded,
-      roundingOverflow,
-      star,
-      memberBase,
-      memberAfterRelief,
-      lossForRelief,
-      cost,
-      net,
-      tax,
-    };
-  });
+        const addPlayer = ()=>{ const name = newPlayerName.trim(); if(!name) return; setPlayers(prev=>[...prev,{id:String(Date.now()), name, buys:[], payoutStr:'0', stargazer:false, memberCount:0}]); setNewPlayerName(''); };
+        const removePlayer = (id)=> setPlayers(prev=>prev.filter(p=>p.id!==id));
+        const updatePlayer = (id,updater)=> setPlayers(prev=>prev.map(p=> p.id===id?updater(p):p));
 
-  return {
-    factor,
-    rows,
-    totalBuyRaw,
-    totalPayoutRaw,
-    trialBalanceRaw,
-    trialBalanceVisible,
-    totalBuyDiscounted,
-    totalBuyDiscountedRounded,
-    totalRoundingOverflow,
-    totalTaxPlayers,
-  };
-}
+        const computed = useMemo(()=> computeAll(players, globalDiscountKey, starFee, memberFee, acceptedDiffRaw), [players,globalDiscountKey,starFee,memberFee,acceptedDiffRaw]);
 
-export default function TexasHoldemSettlement() {
-  // 语音播报
-  const [speakOn, setSpeakOn] = useState(true);
-  const [speakRate, setSpeakRate] = useState(1.0);
-  const speakLock = useRef(false);
-  function speak(text) {
-    try {
-      if (!speakOn || typeof window === 'undefined' || !window.speechSynthesis) return;
-      if (speakLock.current) return;
-      speakLock.current = true;
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = speakRate; u.lang = 'zh-CN';
-      u.onend = () => { speakLock.current = false; };
-      window.speechSynthesis.speak(u);
-    } catch { /* ignore */ }
-  }
+        const acceptCurrentDifference = ()=>{
+          const diffRaw = computed.trialBalanceRaw - acceptedDiffRaw; if (Math.abs(diffRaw)<1e-9) return;
+          const intoTax = Math.abs(diffRaw) * (computed.factor||1); setAcceptedDiffRaw(v=>v+diffRaw); setAcceptedTaxFromDiff(v=>v+intoTax);
+          alert(`已接受差额：原始 ¥${currency(diffRaw)}，按折扣并入税池 ¥${currency(intoTax)}`);
+        };
 
-  const [globalDiscountKey, setGlobalDiscountKey] = useState("none");
-  const [starFee, setStarFee] = useState(20);
-  const [memberFee, setMemberFee] = useState(20);
+        return (
+          <div className="min-h-screen p-4 space-y-6">
+            <h1 className="text-2xl font-bold">德州扑克买入结算工具</h1>
 
-  // 已接受差额（原始）与折后入税池累计
-  const [acceptedDiffRaw, setAcceptedDiffRaw] = useState(0);
-  const [acceptedTaxFromDiff, setAcceptedTaxFromDiff] = useState(0);
+            {/* 顶部设置 */}
+            <Card>
+              <div className="grid gap-4 md:grid-cols-5">
+                <label className="flex items-center gap-2">
+                  <span className="text-sm">全局打折</span>
+                  <select className="rounded-lg border px-3 py-2 bg-sky-50 focus:outline-none focus:ring focus:ring-sky-200" value={globalDiscountKey} onChange={(e)=>setGlobalDiscountKey(e.target.value)}>
+                    {DiscountOptions.map(d=> <option key={d.key} value={d.key}>{d.label}</option>)}
+                  </select>
+                </label>
+                <label className="flex items-center gap-2">
+                  <span className="text-sm">观星费用</span>
+                  <input type="number" className="rounded-lg border px-3 py-2 bg-emerald-50 focus:outline-none focus:ring focus:ring-emerald-200" value={starFee} min={0} onChange={(e)=>setStarFee(Number(e.target.value)||0)} />
+                </label>
+                <label className="flex items-center gap-2">
+                  <span className="text-sm">会员单次</span>
+                  <input type="number" className="rounded-lg border px-3 py-2 bg-purple-50 focus:outline-none focus:ring focus:ring-purple-200" value={memberFee} min={0} onChange={(e)=>setMemberFee(Number(e.target.value)||0)} />
+                </label>
+                <div className="flex items-center gap-2 md:col-span-2">
+                  <input placeholder="新玩家名字" className="rounded-lg border px-3 py-2 flex-1 bg-indigo-50 focus:outline-none focus:ring focus:ring-indigo-200" value={newPlayerName} onChange={(e)=>setNewPlayerName(e.target.value)} onKeyDown={(e)=> e.key==='Enter' && addPlayer()} />
+                  <button className="rounded-2xl px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-700 shadow" onClick={addPlayer}>添加</button>
+                </div>
+              </div>
+              <div className="mt-2 text-xs text-gray-600 flex items-center gap-4">
+                <label className="inline-flex items-center gap-2">
+                  <input type="checkbox" checked={speakOn} onChange={(e)=>setSpeakOn(e.target.checked)} />
+                  <span>语音播报</span>
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <span>语速</span>
+                  <input type="range" min={0.7} max={1.3} step={0.1} value={speakRate} onChange={(e)=>setSpeakRate(Number(e.target.value))} />
+                  <span className="text-xs">{speakRate.toFixed(1)}</span>
+                </label>
+              </div>
+            </Card>
 
-  const [players, setPlayers] = useState(() =>
-    initialNames.map((name, idx) => ({ id: `${idx + 1}`, name, buys: [], payoutStr: "0", stargazer: false, memberCount: 0 }))
-  );
-  const [newPlayerName, setNewPlayerName] = useState("");
+            {/* 玩家表格 */}
+            <Card>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-600">
+                      <th className="px-3 py-2 text-left">玩家 / 买入记录</th>
+                      <th className="px-3 py-2 text-left">买入</th>
+                      <th className="px-3 py-2 text-left">兑付</th>
+                      <th className="px-3 py-2 text-left">观星</th>
+                      <th className="px-3 py-2 text-left">会员</th>
+                      <th className="px-3 py-2 text-left">净额/折后/税</th>
+                      <th className="px-3 py-2 text-left">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {players.map((p)=>{
+                      const row = computed.rows.find(r=>r.id===p.id) || { rawBuy:0, discountedBuyRounded:0, net:0, tax:0, memberAfterRelief:0 };
+                      const canDelete = (p.buys||[]).length===0;
+                      return (
+                        <tr key={p.id} className="border-t align-top">
+                          <td className="px-3 py-3">
+                            <div className="font-medium">{p.name}</div>
+                            <div className="mt-1 text-xs text-gray-500 break-words">{(p.buys||[]).length ? `买入记录：${p.buys.join(', ')}` : '暂无买入记录'}</div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <button className="rounded-2xl px-3 py-2 text-white bg-cyan-600 hover:bg-cyan-700 shadow" onClick={()=>{ updatePlayer(p.id, pp=>({...pp,buys:[...pp.buys,100]})); speak(`${p.name} 买入 100 元`); }}>+100</button>
+                              <select className="rounded-lg border px-3 py-2 bg-blue-50 focus:outline-none focus:ring focus:ring-blue-200" defaultValue="" onChange={(e)=>{ const v = Number(e.target.value||0); if (v>0){ updatePlayer(p.id, pp=>({...pp,buys:[...pp.buys,v]})); speak(`${p.name} 买入 ${v} 元`); e.target.value=''; } }}>
+                                <option value="" disabled>快捷</option>
+                                <option value="50">+50</option>
+                                <option value="200">+200</option>
+                                <option value="300">+300</option>
+                              </select>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <input className="no-spinner rounded-lg border px-3 py-2 w-28 bg-yellow-50 focus:outline-none focus:ring focus:ring-yellow-200" inputMode="numeric" pattern="[0-9]*" type="text" value={p.payoutStr} onChange={(e)=>{ const v=e.target.value; if(/^\d*$/.test(v)){ updatePlayer(p.id, pp=>({...pp, payoutStr:v})); } }} />
+                          </td>
+                          <td className="px-3 py-3">
+                            <label className="inline-flex items-center gap-2">
+                              <input type="checkbox" checked={p.stargazer} onChange={(e)=>{ const checked=e.target.checked; updatePlayer(p.id, pp=>({...pp,stargazer:checked})); if(checked) speak(`${p.name} 选择观星，费用 ${currency(starFee)} 元`); }} />
+                              <span className="px-2 py-1 rounded bg-emerald-50">{p.stargazer ? `¥${currency(starFee)}` : '未选'}</span>
+                            </label>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="flex flex-col items-start gap-1">
+                              <div className="flex items-center gap-2">
+                                <button className="rounded-2xl px-3 py-2 text-white bg-purple-600 hover:bg-purple-700 shadow" onClick={()=>{ updatePlayer(p.id, pp=>({...pp, memberCount: pp.memberCount+1})); speak(`${p.name} 增加一次会员，当前 ${p.memberCount+1} 次`); }}>+ 会员</button>
+                                {p.memberCount>0 && (
+                                  <button className="rounded-2xl px-3 py-2 bg-purple-100 hover:bg-purple-200" onClick={()=> updatePlayer(p.id, pp=>({...pp, memberCount: Math.max(0, pp.memberCount-1)}))}>-1</button>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-700">次数：{p.memberCount} 金额：¥{currency(row.memberAfterRelief||0)}</div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="text-sm leading-6">
+                              <div className={row.net>=0? 'text-green-600':'text-red-600'}>净额：{row.net>=0?'+':''}¥{currency(row.net)}</div>
+                              <div>折后（取整）：¥{currency(row.discountedBuyRounded)}</div>
+                              <div>税：¥{currency(row.tax)}</div>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <button className={(canDelete? 'bg-rose-600 hover:bg-rose-700':'bg-gray-300 cursor-not-allowed') + ' rounded-2xl px-3 py-2 text-white shadow'} disabled={!canDelete} onClick={()=> canDelete && removePlayer(p.id)}>删除</button>
+                          </td>
+                        </tr>
+                      )})}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
 
-  function addPlayer() {
-    const name = newPlayerName.trim();
-    if (!name) return;
-    setPlayers((prev) => [...prev, { id: `${Date.now()}`, name, buys: [], payoutStr: "0", stargazer: false, memberCount: 0 }]);
-    setNewPlayerName("");
-  }
-  function removePlayer(id) { setPlayers((prev) => prev.filter((p) => p.id !== id)); }
-  function updatePlayer(id, updater) { setPlayers((prev) => prev.map((p) => (p.id === id ? updater(p) : p))); }
-
-  const computed = useMemo(
-    () => computeAll(players, globalDiscountKey, starFee, memberFee, acceptedDiffRaw),
-    [players, globalDiscountKey, starFee, memberFee, acceptedDiffRaw]
-  );
-
-  function acceptCurrentDifference() {
-    const diffRaw = computed.trialBalanceRaw - acceptedDiffRaw;
-    if (Math.abs(diffRaw) < 1e-9) return;
-    const intoTax = Math.abs(diffRaw) * (computed.factor || 1);
-    setAcceptedDiffRaw((v) => v + diffRaw);
-    setAcceptedTaxFromDiff((v) => v + intoTax);
-    alert(`已接受差额：原始 ¥${currency(diffRaw)}，按折扣并入税池 ¥${currency(intoTax)}`);
-  }
-
-  function Card({ children }) { return <div className="bg-white rounded-2xl shadow p-4">{children}</div>; }
-
-  return (
-    <div className="min-h-screen p-4 space-y-6 bg-[#f5f7fb]">
-      <h1 className="text-2xl font-bold">德州扑克买入结算工具</h1>
-
-      {/* 顶部设置 */}
-      <Card>
-        <div className="grid gap-4 md:grid-cols-5">
-          <label className="flex items-center gap-2">
-            <span className="text-sm">全局打折</span>
-            <select className="rounded-lg border px-3 py-2 bg-sky-50 focus:outline-none focus:ring focus:ring-sky-200" value={globalDiscountKey} onChange={(e) => setGlobalDiscountKey(e.target.value)}>
-              {DiscountOptions.map((d) => (
-                <option key={d.key} value={d.key}>{d.label}</option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-2">
-            <span className="text-sm">观星费用</span>
-            <input type="number" className="rounded-lg border px-3 py-2 bg-emerald-50 focus:outline-none focus:ring focus:ring-emerald-200" value={starFee} min={0} onChange={(e) => setStarFee(Number(e.target.value) || 0)} />
-          </label>
-          <label className="flex items-center gap-2">
-            <span className="text-sm">会员单次</span>
-            <input type="number" className="rounded-lg border px-3 py-2 bg-purple-50 focus:outline-none focus:ring focus:ring-purple-200" value={memberFee} min={0} onChange={(e) => setMemberFee(Number(e.target.value) || 0)} />
-          </label>
-          <div className="flex items-center gap-2 md:col-span-2">
-            <input placeholder="新玩家名字" className="rounded-lg border px-3 py-2 flex-1 bg-indigo-50 focus:outline-none focus:ring focus:ring-indigo-200" value={newPlayerName} onChange={(e) => setNewPlayerName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addPlayer()} />
-            <button className="rounded-2xl px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-700 shadow" onClick={addPlayer}>添加</button>
+            {/* 底部统计 */}
+            <div className="grid md:grid-cols-3 gap-4">
+              <Card>
+                <div className="space-y-1">
+                  <div>折前总买入：¥{currency(computed.totalBuyRaw)}</div>
+                  <div>折前总兑付：¥{currency(computed.totalPayoutRaw)}</div>
+                  <div className="text-sm">折后（未取整）总买入：¥{currency(computed.totalBuyDiscounted)}</div>
+                  <div className="text-sm">折后取整总买入：¥{currency(computed.totalBuyDiscountedRounded)}</div>
+                  <div className="text-sm text-amber-700">取整溢出合计：¥{currency(computed.totalRoundingOverflow)}（已计入税池）</div>
+                  <div className="text-sm">试算平衡（折前买入 - 折前兑付）：¥{currency(computed.trialBalanceVisible)}</div>
+                  <div className="text-xs text-gray-500">已接受差额累计（原始）：¥{currency(acceptedDiffRaw)}</div>
+                </div>
+              </Card>
+              <Card>
+                <div className="space-y-2">
+                  <button className={(Math.abs(computed.trialBalanceVisible)<1e-9? 'bg-gray-300 cursor-not-allowed':'bg-amber-600 hover:bg-amber-700') + ' rounded-2xl px-4 py-2 text-white shadow'} disabled={Math.abs(computed.trialBalanceVisible)<1e-9} onClick={acceptCurrentDifference}>接受差额（并入税池）</button>
+                  <div className="text-sm text-gray-700">并入金额 = |差额| × 当前折扣系数（折后）。</div>
+                </div>
+              </Card>
+              <Card>
+                <div className="space-y-1">
+                  <div>玩家应税合计：¥{currency(computed.totalTaxPlayers)}</div>
+                  <div>取整溢出入税：¥{currency(computed.totalRoundingOverflow)}</div>
+                  <div>接受差额入税：¥{currency(acceptedTaxFromDiff)}</div>
+                  <div className="font-semibold">税池总计：¥{currency(computed.totalTaxPlayers + computed.totalRoundingOverflow + acceptedTaxFromDiff)}</div>
+                </div>
+              </Card>
+            </div>
           </div>
-        </div>
-        <div className="mt-2 text-xs text-gray-600 flex items-center gap-4">
-          <label className="inline-flex items-center gap-2">
-            <input type="checkbox" checked={speakOn} onChange={(e)=>setSpeakOn(e.target.checked)} />
-            <span>语音播报</span>
-          </label>
-          <label className="inline-flex items-center gap-2">
-            <span>语速</span>
-            <input type="range" min={0.7} max={1.3} step={0.1} value={speakRate} onChange={(e)=>setSpeakRate(Number(e.target.value))} />
-            <span className="text-xs">{speakRate.toFixed(1)}</span>
-          </label>
-        </div>
-      </Card>
+        );
+      }
 
-      {/* 玩家表格 */}
-      <Card>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="text-gray-600">
-                <th className="px-3 py-2 text-left">玩家 / 买入记录</th>
-                <th className="px-3 py-2 text-left">买入</th>
-                <th className="px-3 py-2 text-left">兑付</th>
-                <th className="px-3 py-2 text-left">观星</th>
-                <th className="px-3 py-2 text-left">会员</th>
-                <th className="px-3 py-2 text-left">净额/折后/税</th>
-                <th className="px-3 py-2 text-left">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {players.map((p) => {
-                const row = computed.rows.find((r) => r.id === p.id) || { rawBuy: 0, discountedBuyRounded: 0, net: 0, tax: 0, memberAfterRelief: 0 };
-                const canDelete = (p.buys || []).length === 0;
-                return (
-                  <tr key={p.id} className="border-t align-top">
-                    {/* 名字 + 记录 */}
-                    <td className="px-3 py-3">
-                      <div className="font-medium">{p.name}</div>
-                      <div className="mt-1 text-xs text-gray-500 break-words">{(p.buys || []).length ? `买入记录：${p.buys.join(", ")}` : "暂无买入记录"}</div>
-                    </td>
-
-                    {/* 买入（无自定义，仅快捷） */}
-                    <td className="px-3 py-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button className="rounded-2xl px-3 py-2 text-white bg-cyan-600 hover:bg-cyan-700 shadow" onClick={() => { updatePlayer(p.id, (pp) => ({ ...pp, buys: [...pp.buys, 100] })); speak(`${p.name} 买入 100 元`); }}>+100</button>
-                        <select className="rounded-lg border px-3 py-2 bg-blue-50 focus:outline-none focus:ring focus:ring-blue-200" defaultValue="" onChange={(e) => { const v = Number(e.target.value || 0); if (v > 0) { updatePlayer(p.id, (pp) => ({ ...pp, buys: [...pp.buys, v] })); speak(`${p.name} 买入 ${v} 元`); e.target.value = ""; } }}>
-                          <option value="" disabled>快捷</option>
-                          <option value="50">+50</option>
-                          <option value="200">+200</option>
-                          <option value="300">+300</option>
-                        </select>
-                      </div>
-                    </td>
-
-                    {/* 兑付（纯数字文本） */}
-                    <td className="px-3 py-3">
-                      <input className="no-spinner rounded-lg border px-3 py-2 w-28 bg-yellow-50 focus:outline-none focus:ring focus:ring-yellow-200" inputMode="numeric" pattern="[0-9]*" type="text" value={p.payoutStr} onChange={(e) => { const v = e.target.value; if (/^\d*$/.test(v)) { updatePlayer(p.id, (pp) => ({ ...pp, payoutStr: v })); } }} />
-                    </td>
-
-                    {/* 观星 */}
-                    <td className="px-3 py-3">
-                      <label className="inline-flex items-center gap-2">
-                        <input type="checkbox" checked={p.stargazer} onChange={(e) => { const checked = e.target.checked; updatePlayer(p.id, (pp) => ({ ...pp, stargazer: checked })); if (checked) speak(`${p.name} 选择观星，费用 ${currency(starFee)} 元`); }} />
-                        <span className="px-2 py-1 rounded bg-emerald-50">{p.stargazer ? `¥${currency(starFee)}` : "未选"}</span>
-                      </label>
-                    </td>
-
-                    {/* 会员 */}
-                    <td className="px-3 py-3">
-                      <div className="flex flex-col items-start gap-1">
-                        <div className="flex items-center gap-2">
-                          <button className="rounded-2xl px-3 py-2 text-white bg-purple-600 hover:bg-purple-700 shadow" onClick={() => { updatePlayer(p.id, (pp) => ({ ...pp, memberCount: pp.memberCount + 1 })); speak(`${p.name} 增加一次会员，当前 ${p.memberCount + 1} 次`); }}>+ 会员</button>
-                          {p.memberCount > 0 && (
-                            <button className="rounded-2xl px-3 py-2 bg-purple-100 hover:bg-purple-200" onClick={() => updatePlayer(p.id, (pp) => ({ ...pp, memberCount: Math.max(0, pp.memberCount - 1) }))}>-1</button>
-                          )}
-                        </div>
-                        <div className="text-xs text-gray-700">次数：{p.memberCount} 金额：¥{currency(row.memberAfterRelief || 0)}</div>
-                      </div>
-                    </td>
-
-                    {/* 净额/折后/税 */}
-                    <td className="px-3 py-3">
-                      <div className="text-sm leading-6">
-                        <div className={row.net >= 0 ? "text-green-600" : "text-red-600"}>净额：{row.net >= 0 ? "+" : ""}¥{currency(row.net)}</div>
-                        <div>折后（取整）：¥{currency(row.discountedBuyRounded)}</div>
-                        <div>税：¥{currency(row.tax)}</div>
-                      </div>
-                    </td>
-
-                    {/* 操作 */}
-                    <td className="px-3 py-3">
-                      <button className={(canDelete ? "bg-rose-600 hover:bg-rose-700" : "bg-gray-300 cursor-not-allowed") + " rounded-2xl px-3 py-2 text-white shadow"} disabled={!canDelete} onClick={() => canDelete && removePlayer(p.id)}>删除</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {/* 底部统计 */}
-      <div className="grid md:grid-cols-3 gap-4">
-        <Card>
-          <div className="space-y-1">
-            <div>折前总买入：¥{currency(computed.totalBuyRaw)}</div>
-            <div>折前总兑付：¥{currency(computed.totalPayoutRaw)}</div>
-            <div className="text-sm">折后（未取整）总买入：¥{currency(computed.totalBuyDiscounted)}</div>
-            <div className="text-sm">折后取整总买入：¥{currency(computed.totalBuyDiscountedRounded)}</div>
-            <div className="text-sm text-amber-700">取整溢出合计：¥{currency(computed.totalRoundingOverflow)}（已计入税池）</div>
-            <div className="text-sm">试算平衡（折前买入 - 折前兑付）：¥{currency(computed.trialBalanceVisible)}</div>
-            <div className="text-xs text-gray-500">已接受差额累计（原始）：¥{currency(acceptedDiffRaw)}</div>
-          </div>
-        </Card>
-        <Card>
-          <div className="space-y-2">
-            <button className={(Math.abs(computed.trialBalanceVisible) < 1e-9 ? "bg-gray-300 cursor-not-allowed" : "bg-amber-600 hover:bg-amber-700") + " rounded-2xl px-4 py-2 text-white shadow"} disabled={Math.abs(computed.trialBalanceVisible) < 1e-9} onClick={acceptCurrentDifference}>接受差额（并入税池）</button>
-            <div className="text-sm text-gray-700">并入金额 = |差额| × 当前折扣系数（折后）。</div>
-          </div>
-        </Card>
-        <Card>
-          <div className="space-y-1">
-            <div>玩家应税合计：¥{currency(computed.totalTaxPlayers)}</div>
-            <div>取整溢出入税：¥{currency(computed.totalRoundingOverflow)}</div>
-            <div>接受差额入税：¥{currency(acceptedTaxFromDiff)}</div>
-            <div className="font-semibold">税池总计：¥{currency(computed.totalTaxPlayers + computed.totalRoundingOverflow + acceptedTaxFromDiff)}</div>
-          </div>
-        </Card>
-      </div>
-
-      <style>{`
-        input.no-spinner::-webkit-outer-spin-button,
-        input.no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        input.no-spinner { -moz-appearance: textfield; }
-      `}</style>
-    </div>
-  );
-}
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App/>);
+    </script>
+  </body>
+</html>
