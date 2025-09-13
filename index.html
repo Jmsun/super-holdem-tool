@@ -1,16 +1,18 @@
 import React, { useMemo, useRef, useState } from "react";
 
 /**
- * React 组件版（适配预览/构建器）：
- * - 无 <html> 外壳与 CDN 依赖，保留 export default。
- * - 包含：全局打折（仅买入）→ 折后向上取整到 5 元（溢出入税池）；
- *   试算平衡=折前总买入-折前总兑付；接受差额（按折扣折后入税池，并抵消差额显示）；
- *   税制与会员优惠/抵税；买入快捷；兑付纯数字文本；语音播报；底部统计；
- *   列顺序：净额/折后/税；有买入记录后不可删除。
+ * 德州扑克买入结算工具（React / TSX）
+ * 本次变更：
+ * 1) 净额、折扣与取整算法更新：
+ *    净额 = round5up( (兑付 − 买入 − 观星) × 折扣率 ) − 会员费(after relief)
+ *    —— 注意：兑付也参与折扣；向上取整到 5 元后，再减去会员费（after relief）。
+ *    —— 取整溢出（取整 − 折后净差）继续计入税池。
+ * 2) 其他逻辑保持不变（会员优惠/抵税、税档规则、折前功能购买兑付、输入修复等）。
  */
 
+// —— 玩家名单 ——
 const initialNames = [
-  "Jim", "李岳霖", "Jack", "Ying qi", "Annmary", "Bo", "Sue", "赫", "Emma", "Sun", "Alex", "Tony", "柯", "Dudu", "二维马",
+  "Jim", "li yuelin", "Jack", "Ying qi", "Annmary", "Bo", "Sue", "he", "Emma", "Sun", "Alex", "Tony", "ke", "Dudu", "Jasonma",
 ];
 
 const DiscountOptions = [
@@ -19,19 +21,56 @@ const DiscountOptions = [
   { key: "third", label: "除3", factor: 1 / 3 },
 ];
 
+const round5up = (v: number) => Math.ceil(v / 5) * 5; // 向上取整到 5 的倍数
+
 function currency(n: number | string) {
   const v = Number(n) || 0;
   return (Math.round(v * 100) / 100).toFixed(2);
 }
 function clampMinZero(n: number) { return Math.max(0, Number(n) || 0); }
 
-// 阶梯固额税：基于“净赢”为正的金额
+// 固额阶梯税：基于净赢为正
 function tierTaxByWin(win: number) {
   const w = Number(win) || 0;
   if (w < 50) return 0;
   if (w < 75) return 5;
-  const blocks = Math.floor((w - 75) / 50); // 75-124→0；125-174→1；...
+  const blocks = Math.floor((w - 75) / 50); // 75-124 → 0；125-174 → 1；...
   return 10 + 5 * blocks;
+}
+
+// —— 类型 ——
+interface Player {
+  id: string;
+  name: string;
+  buys: number[];
+  payoutStr: string; // 文本数字，避免浏览器数值控件滴声
+  stargazer: boolean;
+  memberCount: number;
+}
+interface Row extends Player {
+  rawBuy: number;
+  star: number;
+  discountedDelta: number; // 折后净差（未取整）= (payout - rawBuy - star) * factor
+  roundedDelta: number;    // 折后净差（取整到5）
+  roundingOverflow: number;// 取整溢出
+  memberBase: number;
+  memberAfterRelief: number;
+  lossForRelief: number;   // 用于判断会员优惠的“折后含观星输”= max(0, -discountedDelta)
+  net: number;             // 最终净额 = roundedDelta - memberAfterRelief
+  tax: number;
+}
+interface Computed {
+  factor: number;
+  rows: Row[];
+  totalBuyRaw: number;
+  totalPayoutRaw: number;
+  trialBalanceRaw: number;
+  trialBalanceVisible: number;
+  totalDeltaDiscounted: number; // 折后净差（未取整）总计
+  totalDeltaRounded: number;    // 折后净差（取整）总计
+  totalRoundingOverflow: number;
+  totalTaxPlayers: number;
+  trialBalanceExtraRaw: number;
 }
 
 function computeAll(
@@ -39,51 +78,59 @@ function computeAll(
   globalDiscountKey: string,
   starFee: number,
   memberFee: number,
-  acceptedDiffRaw: number
-) {
+  acceptedDiffRaw: number,
+  preFeaturePayoutRaw: number
+): Computed {
   const factor = (DiscountOptions.find((d) => d.key === globalDiscountKey) || { factor: 1 }).factor;
 
   // 折前汇总（用于试算平衡）
   const totalBuyRaw = players.reduce((a, p) => a + (p.buys || []).reduce((x, y) => x + y, 0), 0);
   const totalPayoutRaw = players.reduce((a, p) => a + Number(p.payoutStr ? Number(p.payoutStr) : 0), 0);
-  const trialBalanceRaw = totalBuyRaw - totalPayoutRaw;
+
+  // 试算平衡：折前买入 - 折前兑付 - 折前功能购买兑付
+  const trialBalanceExtraRaw = Number(preFeaturePayoutRaw) || 0;
+  const trialBalanceRaw = totalBuyRaw - totalPayoutRaw - trialBalanceExtraRaw;
   const trialBalanceVisible = trialBalanceRaw - (acceptedDiffRaw || 0);
 
-  let totalBuyDiscounted = 0;
-  let totalBuyDiscountedRounded = 0;
+  let totalDeltaDiscounted = 0;
+  let totalDeltaRounded = 0;
   let totalRoundingOverflow = 0;
   let totalTaxPlayers = 0;
 
-  const rows = players.map((p) => {
+  const rows: Row[] = players.map((p) => {
     const rawBuy = (p.buys || []).reduce((s, v) => s + v, 0);
-    const discountedBuy = rawBuy * factor; // 买入打折
-    const discountedBuyRounded = Math.ceil(discountedBuy / 5) * 5; // 5 元向上取整
-    const roundingOverflow = discountedBuyRounded - discountedBuy; // 入税池
-
-    const star = p.stargazer ? Number(starFee) || 0 : 0; // 不打折
-
-    const memberBase = (Number(p.memberCount || 0) || 0) * (Number(memberFee) || 0); // 不打折
-
+    const star = p.stargazer ? Number(starFee) || 0 : 0; // 观星不打折
     const payout = Number(p.payoutStr ? Number(p.payoutStr) : 0);
-    const lossForRelief = discountedBuyRounded + star - payout; // 亏损（不含会员费）
 
+    // 新算法：折后净差（未取整）
+    const discountedDelta = (payout - rawBuy - star) * factor;
+    // 会员优惠判断基于“折扣后含观星输”= max(0, -discountedDelta)
+    const lossForRelief = Math.max(0, -discountedDelta);
+
+    // 取整到 5
+    const roundedDelta = round5up(discountedDelta);
+    const roundingOverflow = roundedDelta - discountedDelta; // 入税池
+
+    // 会员费（不打折）+ 优惠
+    const memberBase = (Number(p.memberCount || 0) || 0) * (Number(memberFee) || 0);
     let memberAfterRelief = memberBase;
     if ((p.memberCount || 0) >= 2) {
       if (lossForRelief >= 300) memberAfterRelief = memberBase * 0.5;
       else if (lossForRelief >= 200) memberAfterRelief = clampMinZero(memberBase - 10);
     }
 
-    const cost = discountedBuyRounded + star + memberAfterRelief;
-    const net = payout - cost; // >0 净赢
+    // 最终净额
+    const net = roundedDelta - memberAfterRelief;
 
+    // 税：基于最终净额（>0 才征）
     let tax = tierTaxByWin(net);
     if ((p.memberCount || 0) >= 2) {
       if (tax >= 40) tax = clampMinZero(tax - 20);
       else if (tax >= 20) tax = clampMinZero(tax - 10);
     }
 
-    totalBuyDiscounted += discountedBuy;
-    totalBuyDiscountedRounded += discountedBuyRounded;
+    totalDeltaDiscounted += discountedDelta;
+    totalDeltaRounded += roundedDelta;
     totalRoundingOverflow += roundingOverflow;
     if (tax > 0) totalTaxPlayers += tax;
 
@@ -95,17 +142,16 @@ function computeAll(
       stargazer: p.stargazer,
       payoutStr: p.payoutStr,
       rawBuy,
-      discountedBuy,
-      discountedBuyRounded,
-      roundingOverflow,
       star,
+      discountedDelta,
+      roundedDelta,
+      roundingOverflow,
       memberBase,
       memberAfterRelief,
       lossForRelief,
-      cost,
       net,
       tax,
-    } as Row;
+    };
   });
 
   return {
@@ -115,46 +161,12 @@ function computeAll(
     totalPayoutRaw,
     trialBalanceRaw,
     trialBalanceVisible,
-    totalBuyDiscounted,
-    totalBuyDiscountedRounded,
+    totalDeltaDiscounted,
+    totalDeltaRounded,
     totalRoundingOverflow,
     totalTaxPlayers,
-  } as Computed;
-}
-
-// —— 类型（仅为 TSX 友好；如果构建器是 JS 也能忽略）——
-interface Player {
-  id: string;
-  name: string;
-  buys: number[];
-  payoutStr: string; // 用字符串避免浏览器数值控件“滴”声
-  stargazer: boolean;
-  memberCount: number;
-}
-interface Row extends Player {
-  rawBuy: number;
-  discountedBuy: number;
-  discountedBuyRounded: number;
-  roundingOverflow: number;
-  star: number;
-  memberBase: number;
-  memberAfterRelief: number;
-  lossForRelief: number;
-  cost: number;
-  net: number;
-  tax: number;
-}
-interface Computed {
-  factor: number;
-  rows: Row[];
-  totalBuyRaw: number;
-  totalPayoutRaw: number;
-  trialBalanceRaw: number;
-  trialBalanceVisible: number;
-  totalBuyDiscounted: number;
-  totalBuyDiscountedRounded: number;
-  totalRoundingOverflow: number;
-  totalTaxPlayers: number;
+    trialBalanceExtraRaw,
+  };
 }
 
 export default function App() {
@@ -165,12 +177,12 @@ export default function App() {
   function speak(text: string) {
     try {
       if (!speakOn || typeof window === "undefined" || !window.speechSynthesis) return;
-      if (speakLock.current) return;
+      if (speakLock.current) return; // 防抖
       speakLock.current = true;
       const u = new SpeechSynthesisUtterance(text);
       u.rate = speakRate; u.lang = "zh-CN"; u.onend = () => { speakLock.current = false; };
       window.speechSynthesis.speak(u);
-    } catch { /* ignore */ }
+    } catch {}
   }
 
   const [globalDiscountKey, setGlobalDiscountKey] = useState("none");
@@ -180,6 +192,9 @@ export default function App() {
   // 已接受差额（原始）与折后入税池累计
   const [acceptedDiffRaw, setAcceptedDiffRaw] = useState(0);
   const [acceptedTaxFromDiff, setAcceptedTaxFromDiff] = useState(0);
+
+  // 折前功能购买兑付（全局）
+  const [preFeaturePayoutRaw, setPreFeaturePayoutRaw] = useState(0);
 
   const [players, setPlayers] = useState<Player[]>(() =>
     initialNames.map((name, idx) => ({ id: `${idx + 1}`, name, buys: [], payoutStr: "0", stargazer: false, memberCount: 0 }))
@@ -195,17 +210,17 @@ export default function App() {
   function updatePlayer(id: string, updater: (p: Player) => Player) { setPlayers((prev) => prev.map((p) => (p.id === id ? updater(p) : p))); }
 
   const computed = useMemo(
-    () => computeAll(players, globalDiscountKey, starFee, memberFee, acceptedDiffRaw),
-    [players, globalDiscountKey, starFee, memberFee, acceptedDiffRaw]
+    () => computeAll(players, globalDiscountKey, starFee, memberFee, acceptedDiffRaw, preFeaturePayoutRaw),
+    [players, globalDiscountKey, starFee, memberFee, acceptedDiffRaw, preFeaturePayoutRaw]
   );
 
   function acceptCurrentDifference() {
-    const diffRaw = computed.trialBalanceRaw - acceptedDiffRaw;
+    const diffRaw = computed.trialBalanceRaw - acceptedDiffRaw; // 当前可视差额
     if (Math.abs(diffRaw) < 1e-9) return;
-    const intoTax = Math.abs(diffRaw) * (computed.factor || 1);
+    const intoTax = diffRaw * (computed.factor || 1); // 折后入税池（按当前折扣）
     setAcceptedDiffRaw((v) => v + diffRaw);
     setAcceptedTaxFromDiff((v) => v + intoTax);
-    alert(`已接受差额：原始 ¥${currency(diffRaw)}，按折扣并入税池 ¥${currency(intoTax)}`);
+    alert(`已接受差额：原始 ¥${currency(diffRaw)}，折后入税池 ¥${currency(intoTax)}`);
   }
 
   function Card({ children }: { children: React.ReactNode }) {
@@ -221,7 +236,9 @@ export default function App() {
         <div className="grid gap-4 md:grid-cols-5">
           <label className="flex items-center gap-2">
             <span className="text-sm">全局打折</span>
-            <select className="rounded-lg border px-3 py-2 bg-sky-50 focus:outline-none focus:ring focus:ring-sky-200" value={globalDiscountKey} onChange={(e) => setGlobalDiscountKey((e.target as HTMLSelectElement).value)}>
+            <select className="rounded-lg border px-3 py-2 bg-sky-50 focus:outline-none focus:ring focus:ring-sky-200" value={globalDiscountKey}
+              onChange={(e) => setGlobalDiscountKey((e.target as HTMLSelectElement).value)}
+              onInput={(e) => setGlobalDiscountKey((e.target as HTMLSelectElement).value)}>
               {DiscountOptions.map((d) => (
                 <option key={d.key} value={d.key}>{d.label}</option>
               ))}
@@ -229,25 +246,34 @@ export default function App() {
           </label>
           <label className="flex items-center gap-2">
             <span className="text-sm">观星费用</span>
-            <input type="number" className="rounded-lg border px-3 py-2 bg-emerald-50 focus:outline-none focus:ring focus:ring-emerald-200" value={starFee} min={0} onChange={(e) => setStarFee(Number((e.target as HTMLInputElement).value) || 0)} />
+            <input type="number" className="rounded-lg border px-3 py-2 bg-emerald-50 focus:outline-none focus:ring focus:ring-emerald-200" value={starFee} min={0}
+              onChange={(e) => setStarFee(Number((e.target as HTMLInputElement).value) || 0)}
+              onInput={(e) => setStarFee(Number((e.target as HTMLInputElement).value) || 0)} />
           </label>
           <label className="flex items-center gap-2">
             <span className="text-sm">会员单次</span>
-            <input type="number" className="rounded-lg border px-3 py-2 bg-purple-50 focus:outline-none focus:ring focus:ring-purple-200" value={memberFee} min={0} onChange={(e) => setMemberFee(Number((e.target as HTMLInputElement).value) || 0)} />
+            <input type="number" className="rounded-lg border px-3 py-2 bg-purple-50 focus:outline-none focus:ring focus:ring-purple-200" value={memberFee} min={0}
+              onChange={(e) => setMemberFee(Number((e.target as HTMLInputElement).value) || 0)}
+              onInput={(e) => setMemberFee(Number((e.target as HTMLInputElement).value) || 0)} />
           </label>
           <div className="flex items-center gap-2 md:col-span-2">
-            <input placeholder="新玩家名字" className="rounded-lg border px-3 py-2 flex-1 bg-indigo-50 focus:outline-none focus:ring focus:ring-indigo-200" value={newPlayerName} onChange={(e) => setNewPlayerName((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === "Enter" && addPlayer()} />
+            <input placeholder="新玩家名字" className="rounded-lg border px-3 py-2 flex-1 bg-indigo-50 focus:outline-none focus:ring focus:ring-indigo-200" value={newPlayerName}
+              onChange={(e) => setNewPlayerName((e.target as HTMLInputElement).value)}
+              onInput={(e) => setNewPlayerName((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => e.key === "Enter" && addPlayer()} />
             <button className="rounded-2xl px-4 py-2 text-white bg-indigo-600 hover:bg-indigo-700 shadow" onClick={addPlayer}>添加</button>
           </div>
         </div>
         <div className="mt-2 text-xs text-gray-600 flex items-center gap-4">
           <label className="inline-flex items-center gap-2">
-            <input type="checkbox" checked={speakOn} onChange={(e) => setSpeakOn((e.target as HTMLInputElement).checked)} />
+            <input type="checkbox" checked={speakOn} onChange={(e) => setSpeakOn((e.target as HTMLInputElement).checked)} onInput={(e) => setSpeakOn((e.target as HTMLInputElement).checked)} />
             <span>语音播报</span>
           </label>
           <label className="inline-flex items-center gap-2">
             <span>语速</span>
-            <input type="range" min={0.7} max={1.3} step={0.1} value={speakRate} onChange={(e) => setSpeakRate(Number((e.target as HTMLInputElement).value))} />
+            <input type="range" min={0.7} max={1.3} step={0.1} value={speakRate}
+              onChange={(e) => setSpeakRate(Number((e.target as HTMLInputElement).value))}
+              onInput={(e) => setSpeakRate(Number((e.target as HTMLInputElement).value))} />
             <span className="text-xs">{speakRate.toFixed(1)}</span>
           </label>
         </div>
@@ -270,34 +296,51 @@ export default function App() {
             </thead>
             <tbody>
               {players.map((p) => {
-                const row = (computed.rows.find((r) => r.id === p.id) as Row) || { rawBuy: 0, discountedBuyRounded: 0, net: 0, tax: 0, memberAfterRelief: 0 } as Row;
-                const canDelete = (p.buys || []).length === 0;
+                const row = (computed.rows.find((r) => r.id === p.id) as Row) || {
+                  rawBuy: 0, star: 0, discountedDelta: 0, roundedDelta: 0, roundingOverflow: 0, memberAfterRelief: 0, lossForRelief: 0, net: 0, tax: 0,
+                } as Row;
+                const canDelete = (p.buys || []).length === 0; // 有买入后不可删
                 return (
                   <tr key={p.id} className="border-t align-top">
+                    {/* 名字 + 记录 */}
                     <td className="px-3 py-3">
                       <div className="font-medium">{p.name}</div>
                       <div className="mt-1 text-xs text-gray-500 break-words">{(p.buys || []).length ? `买入记录：${p.buys.join(", ")}` : "暂无买入记录"}</div>
                     </td>
+
+                    {/* 买入快捷 */}
                     <td className="px-3 py-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <button className="rounded-2xl px-3 py-2 text-white bg-cyan-600 hover:bg-cyan-700 shadow" onClick={() => { updatePlayer(p.id, (pp) => ({ ...pp, buys: [...pp.buys, 100] })); speak(`${p.name} 买入 100 元`); }}>+100</button>
-                        <select className="rounded-lg border px-3 py-2 bg-blue-50 focus:outline-none focus:ring focus:ring-blue-200" defaultValue="" onChange={(e) => { const v = Number((e.target as HTMLSelectElement).value || 0); if (v > 0) { updatePlayer(p.id, (pp) => ({ ...pp, buys: [...pp.buys, v] })); speak(`${p.name} 买入 ${v} 元`); (e.target as HTMLSelectElement).value = ""; } }}>
+                        <select className="rounded-lg border px-3 py-2 bg-blue-50 focus:outline-none focus:ring focus:ring-blue-200" defaultValue=""
+                          onChange={(e) => { const v = Number((e.target as HTMLSelectElement).value || 0); if (v > 0) { updatePlayer(p.id, (pp) => ({ ...pp, buys: [...pp.buys, v] })); speak(`${p.name} 买入 ${v} 元`); (e.target as HTMLSelectElement).value = ""; } }}
+                          onInput={(e) => { const v = Number((e.target as HTMLSelectElement).value || 0); if (v > 0) { updatePlayer(p.id, (pp) => ({ ...pp, buys: [...pp.buys, v] })); (e.target as HTMLSelectElement).value = ""; } }}>
                           <option value="" disabled>快捷</option>
                           <option value="50">+50</option>
-                          <option value="200">+200</option>
+                          <option value="20">+20</option>
                           <option value="300">+300</option>
                         </select>
                       </div>
                     </td>
+
+                    {/* 兑付（文本数字） */}
                     <td className="px-3 py-3">
-                      <input className="no-spinner rounded-lg border px-3 py-2 w-28 bg-yellow-50 focus:outline-none focus:ring focus:ring-yellow-200" inputMode="numeric" pattern="[0-9]*" type="text" value={p.payoutStr} onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (/^\d*$/.test(v)) { updatePlayer(p.id, (pp) => ({ ...pp, payoutStr: v })); } }} />
+                      <input className="no-spinner rounded-lg border px-3 py-2 w-28 bg-yellow-50 focus:outline-none focus:ring focus:ring-yellow-200" inputMode="numeric" pattern="[0-9]*" type="text" value={p.payoutStr}
+                        onChange={(e) => { const v = (e.target as HTMLInputElement).value; if (/^\d*$/.test(v)) { updatePlayer(p.id, (pp) => ({ ...pp, payoutStr: v })); } }}
+                        onInput={(e) => { const v = (e.target as HTMLInputElement).value; if (/^\d*$/.test(v)) { updatePlayer(p.id, (pp) => ({ ...pp, payoutStr: v })); } }} />
                     </td>
+
+                    {/* 观星 */}
                     <td className="px-3 py-3">
                       <label className="inline-flex items-center gap-2">
-                        <input type="checkbox" checked={p.stargazer} onChange={(e) => { const checked = (e.target as HTMLInputElement).checked; updatePlayer(p.id, (pp) => ({ ...pp, stargazer: checked })); if (checked) speak(`${p.name} 选择观星，费用 ${currency(starFee)} 元`); }} />
+                        <input type="checkbox" checked={p.stargazer}
+                          onChange={(e) => { const checked = (e.target as HTMLInputElement).checked; updatePlayer(p.id, (pp) => ({ ...pp, stargazer: checked })); if (checked) speak(`${p.name} 选择观星，费用 ${currency(starFee)} 元`); }}
+                          onInput={(e) => { const checked = (e.target as HTMLInputElement).checked; updatePlayer(p.id, (pp) => ({ ...pp, stargazer: checked })); }} />
                         <span className="px-2 py-1 rounded bg-emerald-50">{p.stargazer ? `¥${currency(starFee)}` : "未选"}</span>
                       </label>
                     </td>
+
+                    {/* 会员 */}
                     <td className="px-3 py-3">
                       <div className="flex flex-col items-start gap-1">
                         <div className="flex items-center gap-2">
@@ -309,13 +352,17 @@ export default function App() {
                         <div className="text-xs text-gray-700">次数：{p.memberCount} 金额：¥{currency(row.memberAfterRelief || 0)}</div>
                       </div>
                     </td>
+
+                    {/* 净额/折后/税 */}
                     <td className="px-3 py-3">
                       <div className="text-sm leading-6">
                         <div className={row.net >= 0 ? "text-green-600" : "text-red-600"}>净额：{row.net >= 0 ? "+" : ""}¥{currency(row.net)}</div>
-                        <div>折后（取整）：¥{currency(row.discountedBuyRounded)}</div>
+                        <div>折后净差（取整）：¥{currency(row.roundedDelta)}</div>
                         <div>税：¥{currency(row.tax)}</div>
                       </div>
                     </td>
+
+                    {/* 操作 */}
                     <td className="px-3 py-3">
                       <button className={(canDelete ? "bg-rose-600 hover:bg-rose-700" : "bg-gray-300 cursor-not-allowed") + " rounded-2xl px-3 py-2 text-white shadow"} disabled={!canDelete} onClick={() => canDelete && removePlayer(p.id)}>删除</button>
                     </td>
@@ -327,25 +374,31 @@ export default function App() {
         </div>
       </Card>
 
-      {/* 底部统计 */}
+      {/* 底部统计 + 折前功能购买兑付入口（左下） */}
       <div className="grid md:grid-cols-3 gap-4">
+        {/* 左：折前汇总 + 试算平衡 */}
         <Card>
           <div className="space-y-1">
             <div>折前总买入：¥{currency(computed.totalBuyRaw)}</div>
             <div>折前总兑付：¥{currency(computed.totalPayoutRaw)}</div>
-            <div className="text-sm">折后（未取整）总买入：¥{currency(computed.totalBuyDiscounted)}</div>
-            <div className="text-sm">折后取整总买入：¥{currency(computed.totalBuyDiscountedRounded)}</div>
+            <div className="text-sm">折前功能购买兑付：¥{currency(preFeaturePayoutRaw)}</div>
+            <div className="text-sm">折后净差（未取整）总计：¥{currency(computed.totalDeltaDiscounted)}</div>
+            <div className="text-sm">折后净差（取整）总计：¥{currency(computed.totalDeltaRounded)}</div>
             <div className="text-sm text-amber-700">取整溢出合计：¥{currency(computed.totalRoundingOverflow)}（已计入税池）</div>
-            <div className="text-sm">试算平衡（折前买入 - 折前兑付）：¥{currency(computed.trialBalanceVisible)}</div>
+            <div className="text-sm">试算平衡（折前买入 - 折前兑付 - 折前功能购买兑付）：¥{currency(computed.trialBalanceVisible)}</div>
             <div className="text-xs text-gray-500">已接受差额累计（原始）：¥{currency(acceptedDiffRaw)}</div>
           </div>
         </Card>
+
+        {/* 中：接受差额按钮 */}
         <Card>
           <div className="space-y-2">
             <button className={(Math.abs(computed.trialBalanceVisible) < 1e-9 ? "bg-gray-300 cursor-not-allowed" : "bg-amber-600 hover:bg-amber-700") + " rounded-2xl px-4 py-2 text-white shadow"} disabled={Math.abs(computed.trialBalanceVisible) < 1e-9} onClick={acceptCurrentDifference}>接受差额（并入税池）</button>
-            <div className="text-sm text-gray-700">并入金额 = |差额| × 当前折扣系数（折后）。</div>
+            <div className="text-sm text-gray-700">并入金额 = 差额 × 当前折扣系数（不取绝对值）。</div>
           </div>
         </Card>
+
+        {/* 右：税池 */}
         <Card>
           <div className="space-y-1">
             <div>玩家应税合计：¥{currency(computed.totalTaxPlayers)}</div>
@@ -355,6 +408,32 @@ export default function App() {
           </div>
         </Card>
       </div>
+
+      {/* 左下：折前功能购买兑付入口 */}
+      <div className="grid md:grid-cols-3 gap-4">
+        <Card>
+          <div className="space-y-2">
+            <div className="text-sm font-medium">折前功能购买兑付</div>
+            <div className="flex items-center gap-2">
+              <select className="rounded-lg border px-3 py-2 bg-orange-50 focus:outline-none focus:ring focus:ring-orange-200" defaultValue=""
+                onChange={(e)=>{ const v=Number((e.target as HTMLSelectElement).value||0); if(v>0){ setPreFeaturePayoutRaw(x=>x+v); if(speakOn) speak(`功能购买兑付 增加 ${v} 元`); (e.target as HTMLSelectElement).value=''; } }}
+                onInput={(e)=>{ const v=Number((e.target as HTMLSelectElement).value||0); if(v>0){ setPreFeaturePayoutRaw(x=>x+v); (e.target as HTMLSelectElement).value=''; } }}>
+                <option value="" disabled>选择金额</option>
+                <option value="10">+10</option>
+                <option value="20">+20</option>
+              </select>
+              <div className="text-sm">当前合计：¥{currency(preFeaturePayoutRaw)}</div>
+            </div>
+            <div className="text-xs text-gray-500">计入试算平衡公式：折前买入 − 折前兑付 − 折前功能购买兑付。</div>
+          </div>
+        </Card>
+      </div>
+
+      <style>{`
+        input.no-spinner::-webkit-outer-spin-button,
+        input.no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input.no-spinner { -moz-appearance: textfield; }
+      `}</style>
     </div>
   );
 }
