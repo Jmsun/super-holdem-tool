@@ -9,7 +9,7 @@ import React, { useMemo, useRef, useState } from "react";
  * - 兑付只有在勾选“计入”后才参与计算，避免你输入第一位就触发全局计算。
  * - 采用草稿输入（draft）模式，打字阶段与计算层解耦，解决“输入只能一位”的问题。
  * - 规则同你前版：全局折扣、向上取整到 5 的倍数、取整溢出入税池、会员优惠、观星不打折、
- *   接受差额入税（差额 × 折扣系数，不取绝对值）、折前功能购买兑付（+10/+20）。
+ * 接受差额入税（差额 × 折扣系数，不取绝对值）、折前功能购买兑付（+10/+20）。
  */
 
 // —— 玩家名单 ——
@@ -73,7 +73,7 @@ function computeAll(players, globalDiscountKey, starFee, memberFee, acceptedDiff
     }
 
     // 净额 & 税
-    const net = roundedDelta - memberAfterRelief;
+    let net = roundedDelta - memberAfterRelief;
     let tax = tierTaxByWin(net);
     if ((p.memberCount || 0) >= 2) {
       if (tax >= 40) tax = clampMinZero(tax - 20);
@@ -337,10 +337,17 @@ export default function App() {
                     {/* 兑付（Draft 模式） */}
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-2">
-                        <input className="no-spinner rounded-lg border px-3 py-2 w-28 bg-yellow-50 focus:outline-none focus:ring focus:ring-yellow-200" type="text" value={payoutDraft[p.id] ?? p.payoutStr}
+                        <input
+                          className="no-spinner rounded-lg border px-3 py-2 w-28 bg-yellow-50 focus:outline-none focus:ring focus:ring-yellow-200"
+                          type="text"
+                          value={payoutDraft[p.id] ?? p.payoutStr}
                           onChange={(e) => {
                             const v = e.target.value;
                             setPayoutDraft((d) => ({ ...d, [p.id]: v }));
+                            // 移除：updatePlayer(p.id, (pp) => ({ ...pp, payoutStr: v }));
+                          }}
+                          onBlur={(e) => {
+                            const v = e.target.value;
                             updatePlayer(p.id, (pp) => ({ ...pp, payoutStr: v }));
                           }}
                         />
@@ -444,34 +451,3 @@ export default function App() {
       <div className="grid md:grid-cols-3 gap-4">
         <Card>
           <div className="space-y-2">
-            <div className="text-sm font-medium">折前功能购买兑付</div>
-            <div className="flex items-center gap-2">
-              <select className="rounded-lg border px-3 py-2 bg-orange-50 focus:outline-none focus:ring focus:ring-orange-200" defaultValue=""
-                onChange={(e) => {
-                  const v = Number(e.target.value || 0);
-                  if (v > 0) {
-                    setPreFeaturePayoutRaw((x) => x + v);
-                    if (speakOn) speak(`功能购买兑付 增加 ${v} 元`);
-                    e.target.value = "";
-                  }
-                }}
-              >
-                <option value="" disabled>选择金额</option>
-                <option value="10">+10</option>
-                <option value="20">+20</option>
-              </select>
-              <div className="text-sm">当前合计：¥{currency(preFeaturePayoutRaw)}</div>
-            </div>
-            <div className="text-xs text-gray-500">计入试算平衡公式：折前买入 − 折前兑付 − 折前功能购买兑付。</div>
-          </div>
-        </Card>
-      </div>
-
-      <style>{`
-        input.no-spinner::-webkit-outer-spin-button,
-        input.no-spinner::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        input.no-spinner { -moz-appearance: textfield; }
-      `}</style>
-    </div>
-  );
-}
