@@ -2,24 +2,97 @@
 <html>
 <meta charset="utf-8">
 <title>Speak</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;background:#fafafa;font-family:system-ui,-apple-system,Segoe UI,Roboto}
+  .wrap{max-width:680px;padding:24px;text-align:center}
+  button{font-size:18px;padding:12px 18px;border-radius:12px;border:0;box-shadow:0 6px 18px rgba(0,0,0,.08);cursor:pointer}
+  .muted{color:#b00;margin-top:10px;font-size:14px}
+  .txt{margin:12px 0 18px;color:#333;word-break:break-word}
+</style>
+<body>
+<div class="wrap">
+  <div id="msg" class="txt"></div>
+  <button id="play">🔊 播放/重播</button>
+  <div id="hint" class="muted"></div>
+</div>
 <script>
-function get(p){return new URL(location.href).searchParams.get(p)||""}
-function speak(){
-  const text = decodeURIComponent(get("t")||"");
-  const lang = get("lang") || "zh-CN";     // 中文：zh-CN，英文：en-US
-  const rate = parseFloat(get("rate")||"1"); // 语速 0.5~2
-  const pitch= parseFloat(get("pitch")||"1"); // 音调 0~2
-  if(!text){return}
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = lang; u.rate = rate; u.pitch = pitch;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(u);
-}
-window.addEventListener("load", ()=> {
-  // 某些移动端需要一次用户点击后才能播报；我们尽量自动+兜底按钮
-  try { speak(); } catch(e) {}
-  document.body.innerHTML = `<button style="font-size:18px;padding:10px 16px" onclick="speak()">🔊 播放/重播</button>`;
-});
+(function(){
+  const sp = new URL(location.href).searchParams;
+  const text = sp.get("t") || "";
+  const lang = sp.get("lang") || "zh-CN";
+  const rate = Math.max(.5, Math.min(2, parseFloat(sp.get("rate")||"1.05")));
+  const pitch= Math.max(0, Math.min(2, parseFloat(sp.get("pitch")||"1")));
+  const autoplay = sp.get("autoplay")==="1";   // 可选：?autoplay=1
+  const $msg = document.getElementById("msg");
+  const $hint= document.getElementById("hint");
+  const $btn = document.getElementById("play");
+  $msg.textContent = text ? `将播报：${text}` : "未提供播报文本（t 参数为空）";
+
+  let voices = [];
+  function pickVoice() {
+    // 优先中文，其次系统默认
+    const zh = voices.find(v => /zh|cmn/i.test(v.lang));
+    return zh || speechSynthesis.getVoices()[0] || null;
+  }
+
+  function speak() {
+    if (!text) { $hint.textContent = "t 参数为空，无法播报"; return; }
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      const v = pickVoice();
+      if (v) u.voice = v;
+      u.lang = v?.lang || lang;
+      u.rate = rate;
+      u.pitch = pitch;
+      speechSynthesis.speak(u);
+      $hint.textContent = "";
+    } catch(e) {
+      $hint.textContent = "当前环境不支持语音播报（可能是App内WebView或权限限制）。";
+    }
+  }
+
+  // iOS 需要“用户手势”触发；按钮就是手势触发器
+  $btn.addEventListener("click", speak);
+
+  // 等待 voices 加载（某些浏览器需要）
+  function initWhenReady() {
+    voices = speechSynthesis.getVoices();
+    if (!voices || voices.length === 0) {
+      // 再等等
+      setTimeout(initWhenReady, 150);
+      return;
+    }
+    if (autoplay) {
+      // 尝试自动播，若被策略拦截，用户可点按钮
+      try { speak(); } catch(e) {}
+    } else {
+      $hint.textContent = "如无声，请确认未静音，并点击上方按钮播放。";
+    }
+  }
+
+  // iOS 15+ 有时 voiceschanged 不触发，双保险
+  if ('onvoiceschanged' in speechSynthesis) {
+    speechSynthesis.onvoiceschanged = () => {
+      voices = speechSynthesis.getVoices();
+    };
+  }
+  // 页面可见时再初始化，避免后台态加载失败
+  if (document.visibilityState === "visible") initWhenReady();
+  else document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") initWhenReady();
+  });
+
+  // 额外兜底：任意触摸也视为“手势”
+  document.body.addEventListener("touchstart", function once(){
+    document.body.removeEventListener("touchstart", once, {passive:true});
+    if (!autoplay) return;
+    // 再试一次
+    try { speak(); } catch(e) {}
+  }, {passive:true});
+
+})();
 </script>
-<body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#fafafa"></body>
+</body>
 </html>
